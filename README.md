@@ -63,9 +63,10 @@ python ssh_enable.py close      # turn the SSH service off again
 python ssh_enable.py disable    # revert persistence + stop debug/SSH
 ```
 
-## ⚠️ Back up your coding before flashing
+## ⚠️ Back up your coding before flashing ⚠️ 
 
 **`flash` reprograms the head unit and can wipe its coding / CAFD definitions.**
+You will lose your saved settings.
 Before the first `flash` on a car, make a full backup of the head unit's coding
 so you can put it back afterwards. This happened on a real car during
 development, and restoring from a backup fixed it.
