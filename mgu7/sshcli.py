@@ -21,15 +21,17 @@ SSH_USER = 'root'
 SSH_PORT = 22
 
 # Non-interactive, short connect timeout. The unit regenerates its SSH host key
-# on every reflash/enroll, so we must NOT remember or verify it: both known_hosts
-# files point at the null device, so every connection is "new" and there is never
-# a stale "REMOTE HOST IDENTIFICATION HAS CHANGED" warning (os.devnull is /dev/null
-# on POSIX and NUL on Windows, both accepted by OpenSSH).
+# on every reflash/enroll, so we must NOT remember or verify it. We do NOT point
+# known_hosts at os.devnull: on Windows that resolves to "NUL", which some
+# OpenSSH builds treat as a real, persistent file - a host key written there on
+# the first connect then triggers a fatal "REMOTE HOST IDENTIFICATION HAS
+# CHANGED" that aborts the login before the key is ever offered (issue #2). The
+# host-key files are instead pointed at a fresh, empty temp file per call (see
+# empty_known_hosts), so every connection is genuinely "new" on every platform.
 _COMMON_OPTS = [
     '-o', 'BatchMode=yes',
     '-o', 'StrictHostKeyChecking=no',
-    '-o', 'UserKnownHostsFile=' + os.devnull,
-    '-o', 'GlobalKnownHostsFile=' + os.devnull,
+    '-o', 'CheckHostIP=no',
     '-o', 'IdentitiesOnly=yes',
     '-o', 'PreferredAuthentications=publickey',
     '-o', 'ConnectTimeout=15',
@@ -37,6 +39,29 @@ _COMMON_OPTS = [
     '-o', 'ServerAliveCountMax=3',
     '-o', 'LogLevel=ERROR',
 ]
+
+
+@contextlib.contextmanager
+def empty_known_hosts():
+    """Yield a path to a fresh, empty known_hosts file, removed afterwards.
+
+    Used for both UserKnownHostsFile and GlobalKnownHostsFile so the host key
+    the unit presents is never remembered or compared against a stale entry -
+    reliably, unlike os.devnull on Windows (see _COMMON_OPTS)."""
+    tmp = os.path.join(tempfile.gettempdir(), 'mgu_kh_' + uuid.uuid4().hex)
+    try:
+        with open(tmp, 'w'):
+            pass
+    except OSError:
+        tmp = os.devnull  # fall back; worst case the old behaviour
+    try:
+        yield tmp
+    finally:
+        if tmp != os.devnull:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
 
 
 def ssh_binary():
@@ -97,9 +122,13 @@ def prepared_key(key_path):
             pass
 
 
-def _base_argv(host, key_path, user=SSH_USER, port=SSH_PORT):
+def _base_argv(host, key_path, user=SSH_USER, port=SSH_PORT, known_hosts=None):
+    kh = []
+    if known_hosts:
+        kh = ['-o', 'UserKnownHostsFile=' + known_hosts,
+              '-o', 'GlobalKnownHostsFile=' + known_hosts]
     return ([ssh_binary(), '-i', key_path, '-p', str(port)]
-            + _COMMON_OPTS + ['%s@%s' % (user, host)])
+            + _COMMON_OPTS + kh + ['%s@%s' % (user, host)])
 
 
 def run(host, key_path, command, user=SSH_USER, port=SSH_PORT, timeout=45,
@@ -107,8 +136,8 @@ def run(host, key_path, command, user=SSH_USER, port=SSH_PORT, timeout=45,
     """Run a remote command. Returns (returncode, stdout, stderr)."""
     if isinstance(stdin_data, str):
         stdin_data = stdin_data.encode('utf-8')
-    with prepared_key(key_path) as key:
-        argv = _base_argv(host, key, user, port) + [command]
+    with prepared_key(key_path) as key, empty_known_hosts() as kh:
+        argv = _base_argv(host, key, user, port, known_hosts=kh) + [command]
         try:
             p = subprocess.run(argv, input=stdin_data, stdout=subprocess.PIPE,
                                stderr=subprocess.PIPE, timeout=timeout)

@@ -445,8 +445,14 @@ class Tool:
         if self.args.persist and verified:
             log('--persist: making SSH survive debug mode being off...')
             self.run_persist()
-        log('DONE: MGU SSH enabled - connect with root + %s.' % identity)
-        return EXIT_OK
+        if verified:
+            log('DONE: MGU SSH enabled - connect with root + %s.' % identity)
+            return EXIT_OK
+        log('FAILED: enrollment completed and port 22 is open, but SSH login as '
+            'root was REJECTED (publickey denied), so SSH is NOT usable. The key '
+            'written to %s is the one the unit refused. See issue #2: on some '
+            'software levels the unit does not trust this key.' % identity)
+        return EXIT_ERROR
 
     def flash(self):
         args = self.args
@@ -476,8 +482,16 @@ class Tool:
         if self.args.persist and verified:
             log('--persist: making SSH survive debug mode being off...')
             self.run_persist()
-        log('DONE: MGU flashed + SSH enabled - connect with root + %s.' % identity)
-        return EXIT_OK
+        if verified:
+            log('DONE: MGU flashed + SSH enabled - connect with root + %s.' % identity)
+            return EXIT_OK
+        log('FAILED: the flash and enrollment completed and port 22 is open, but '
+            'SSH login as root was REJECTED (publickey denied), so SSH is NOT '
+            'usable. The key written to %s is the one the unit refused. See issue '
+            '#2: on some software levels the unit does not trust this key, and '
+            'note the flash still clears the CAFD coding - restore it from backup.'
+            % identity)
+        return EXIT_ERROR
 
     def do_flash(self):
         args = self.args
@@ -649,13 +663,13 @@ def main(argv=None):
         elif args.action == 'close':
             tool.close()
         elif args.action == 'flash':
-            tool.flash()
+            return tool.flash()
         elif args.action == 'persist':
             return tool.persist()
         elif args.action == 'disable':
             return tool.disable()
         else:
-            tool.enable()
+            return tool.enable()
     except KeyboardInterrupt:
         print('\nInterrupted.')
         return 130
