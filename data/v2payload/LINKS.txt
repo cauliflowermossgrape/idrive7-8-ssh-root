@@ -1,0 +1,18 @@
+These 5 are symlinks on the unit (Windows can't store them; they are inside alwayson.tar):
+/etc/systemd/system/early.target.wants/sshd.socket               -> /etc/systemd/system/sshd.socket
+/etc/systemd/system/sockets.target.wants/sshd.socket             -> /etc/systemd/system/sshd.socket
+/etc/systemd/system/multi-user.target.wants/sshd.socket          -> /etc/systemd/system/sshd.socket
+/etc/systemd/system/early.target.wants/sshd-always-on-fw.service -> /etc/systemd/system/sshd-always-on-fw.service
+/etc/systemd/system/multi-user.target.wants/sshd-always-on-fw.service -> /etc/systemd/system/sshd-always-on-fw.service
+
+To put everything on a unit as root:
+  mount -o remount,rw /
+  tar xf alwayson.tar -C /
+  systemctl daemon-reload
+  mount -o remount,ro /
+
+SSH keys on the unit (VM 6969):
+  Root login key (public, which clients may log in): /usr/share/sshd/authorized_keys.root
+    (sshd_config: AuthorizedKeysFile /usr/share/sshd/authorized_keys.%u; on the read-only /usr, from the firmware)
+  Host keys (the server's own identity): /run/sshd/ssh_host_{rsa,dsa,ecdsa,ed25519}_key (+ .pub)
+    In /run (tmpfs), so they are regenerated at every boot - the host key changes on each reboot.
