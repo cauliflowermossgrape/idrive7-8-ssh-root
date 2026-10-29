@@ -13,6 +13,31 @@
   `mount -o remount,rw /` → `tar xf alwayson.tar -C /` → `systemctl daemon-reload`
   → `mount -o remount,ro /`.
 
+## BREAKTHROUGH: the cert is flashed UNSIGNED — so our key can be too
+
+The flash writes two kinds of region:
+
+1. **Signed SWE 000056ea** — header at `0x041000` (a 256-byte **BMW RSA-2048
+   signature**, not reproducible), manifest at `0x108000`, file data at
+   `0xf08000` (winston + ivi debug tools). We cannot modify this.
+2. **A second region at `0xf0a000`** that installs `/etc/ssl/certs/debugCA.pem`
+   onto the live rootfs. This one is a plain `HAR#$%&@` archive whose 16-byte
+   header hash field is **ZEROED**, and it is **not referenced by the signed
+   manifest**. In other words BMW drops an arbitrary file (a certificate) onto
+   the filesystem through an **unsigned** region.
+
+So the fix is: **build another unsigned HAR region that installs
+`/usr/share/sshd/authorized_keys.root` (our key)** — no BMW signature required,
+because this region never carried one. `mgu7/har.py` builds and parses that
+format; its self-test reconstructs the real debugCA region **byte-for-byte**,
+and builds a key region that round-trips. The flashed `debugCA.pem` decompresses
+to the *BMW Supplier Debug-Token CA* (zlib-compressed inside the HAR).
+
+Remaining bench check (one unit): confirm the unit applies our extended/!
+parallel unsigned region and that the file lands under `/usr/share/sshd`
+(debugCA lands in `/etc`, which is writable; `/usr` may be read-only at apply
+time). The mechanism itself is proven from the real images.
+
 ## SWE header (the block flashed to 0x041000) — decoded
 
 512 bytes, confirmed by diffing the id7 and id8 debug images (only the version
