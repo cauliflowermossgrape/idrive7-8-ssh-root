@@ -493,12 +493,82 @@ class Tool:
             % identity)
         return EXIT_ERROR
 
-    def do_flash(self):
+    def fix_key(self):
+        """Repair for units where flash + enroll succeed and port 22 opens, but
+        root SSH login is refused because the unit's stock
+        /usr/share/sshd/authorized_keys.root holds a different key (issue #2 on
+        software level 030.016.002). Re-runs the proven debug flash, but the one
+        unsigned HAR region carries OUR root key (asset 05) in place of debugCA,
+        so sshd ends up trusting the key the tool hands you. Every other frame in
+        the contract is byte-identical to a normal flash."""
+        args = self.args
+        vin = args.vin
+        if not vin:
+            raise SystemExit('--vin is required for fix-key (it is written to the MGU with 2E F1 90, so it must match the car).')
+        self.vin = vin
+        arch = args.arch
+        label = 'MGU ID7 (BDC2/BDC3)' if arch == ID7 else arch
+        self.connect()
+        if self.mgu_ip:
+            self.probe(self.mgu_ip)
+        log('Fix-key mode: re-flash the %s debug image with our root key in the '
+            'unsigned region (replaces the stock authorized_keys.root).' % label)
+        log('NOTE: experimental. It rides on the proven flash sequence and only '
+            'changes the bytes of the one unsigned region, so the realistic worst '
+            'case is that the key does not persist - not a brick. Like any flash '
+            'it clears CAFD coding; restore it from your backup afterwards.')
+        if not args.yes:
+            answer = input('Flash the %s debug image now, carrying our SSH key into '
+                           'the unsigned region? The MGU switches into programming '
+                           'mode and reboots.\nVIN %s will be written to the unit. '
+                           '[y/N] ' % (label, vin)).strip().lower()
+            if answer not in ('y', 'yes'):
+                raise SystemExit('Aborted.')
+        self.do_flash(add_key=True)
+        log('Enrolling this unit (A6 71 challenge -> certificate -> A0 FD install)...')
+        identity = self.do_enroll()
+        verified = bool(identity and self.mgu_ip and self.verify_ssh(identity))
+        if not verified and not getattr(self, '_identity_is_baked', True):
+            log('The saved per-car key did not log in; falling back to the baked key.')
+            identity = self._write_baked_identity()
+            verified = bool(identity and self.mgu_ip and self.verify_ssh(identity))
+        if self.args.persist and verified:
+            log('--persist: making SSH survive debug mode being off...')
+            self.run_persist()
+        if verified:
+            log('DONE: MGU flashed with our key + SSH enabled - connect with root + %s.' % identity)
+            return EXIT_OK
+        log('FAILED: the key-flash and enrollment completed and port 22 is open, '
+            'but SSH login as root was still REJECTED. On software levels where '
+            'the unsigned region does not persist, the key was not written - '
+            'capture a fresh flash journal so we can confirm what the unit did. '
+            'The key written locally for you is %s.' % identity)
+        return EXIT_ERROR
+
+    SSH_KEY_PATH = '/usr/share/sshd/authorized_keys.root'
+
+    def _login_key_file_bytes(self):
+        """The exact authorized_keys.root content to flash: the OpenSSH public
+        line of the baked root key (asset 05) plus a trailing newline. This is
+        the key whose private half the tool writes out and connects with, so once
+        it is in place on the unit, root login works."""
+        ident = identity_mod.Identity.from_pem(self.assets.raw(5))
+        return (ident.authorized_key() + '\n').encode('ascii')
+
+    def do_flash(self, add_key=False):
         args = self.args
         material = self.assets.raw(int(flash.CONTRACTS[args.arch][3]))
         operands_blob = self.assets.raw(7)
         operands = flash.SecurityOperands(operands_blob)
         data = flash.FlashData.build(args.arch, args.vin, material)
+        if add_key:
+            keybytes = self._login_key_file_bytes()
+            info = flash.patch_region_file(data, self.SSH_KEY_PATH, keybytes)
+            log('Fix-key: the unsigned debug region (%d B, frames %s) now carries '
+                '%s (%d B) instead of debugCA - the rest of the contract is '
+                'byte-identical.' % (info['region_bytes'],
+                '/'.join(str(i + 1) for i in info['transfer_indices']),
+                self.SSH_KEY_PATH, len(keybytes)))
         log('Flash contract:', data.label, '- frames:', len(data.frames), '| transfer parts:', len(data.parts), '| TransferData bytes:', data.transfer_bytes)
         engine = flash.FlashEngine(self.client, operands, gate=lambda: self.svk is not None and self.svk.is_supported_mgu() or args.force)
         counters = []
@@ -642,7 +712,7 @@ class Tool:
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description='MGU ID7/ID8 SSH enable, status and close tool (flash-debug-mode + SSH-identity enroll).')
-    parser.add_argument('action', choices=('enable', 'flash', 'close', 'disable', 'status', 'persist'), help='enable = enroll-only (re-open SSH on an already-flashed unit, no flashing); flash = flash the debug image + enroll; persist = make SSH start on every boot then turn debug mode off (clears the B7F8E5 DTC); disable = revert persistence + stop debug/SSH; close = stop debug/SSH; status = read state')
+    parser.add_argument('action', choices=('enable', 'flash', 'fix-key', 'close', 'disable', 'status', 'persist'), help='enable = enroll-only (re-open SSH on an already-flashed unit, no flashing); flash = flash the debug image + enroll; fix-key = re-flash carrying our root key in the unsigned region (repair for units that enroll + open port 22 but refuse login because their stock authorized_keys.root holds a different key - issue #2); persist = make SSH start on every boot then turn debug mode off (clears the B7F8E5 DTC); disable = revert persistence + stop debug/SSH; close = stop debug/SSH; status = read state')
     parser.add_argument('--gateway', default='auto', help="ENET gateway/ZGW address, or 'auto' for UDP 6811 broadcast discovery (default: %(default)s)")
     parser.add_argument('--vin', help='17-char VIN (required for enable; written to the MGU with 2E F1 90)')
     parser.add_argument('--arch', default=ID7, choices=(ID7, ID8_BDC3, ID8_BCP), help='head-unit variant (default: %(default)s)')
@@ -664,6 +734,8 @@ def main(argv=None):
             tool.close()
         elif args.action == 'flash':
             return tool.flash()
+        elif args.action == 'fix-key':
+            return tool.fix_key()
         elif args.action == 'persist':
             return tool.persist()
         elif args.action == 'disable':

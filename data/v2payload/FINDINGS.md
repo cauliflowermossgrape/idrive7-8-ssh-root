@@ -13,30 +13,66 @@
   `mount -o remount,rw /` → `tar xf alwayson.tar -C /` → `systemctl daemon-reload`
   → `mount -o remount,ro /`.
 
-## BREAKTHROUGH: the cert is flashed UNSIGNED — so our key can be too
+## CORRECTION: there is NO unsigned file-drop region (earlier claim was wrong)
 
-The flash writes two kinds of region:
+An earlier version of this file claimed the flash drops `debugCA.pem` through a
+*separate unsigned region at `0xf0a000`*, and that we could add our key the same
+way. **The full flash journal (`checkthis/flash_journal_20261020.log`) disproves
+that.** Byte-by-byte, the real flash is two passes:
 
-1. **Signed SWE 000056ea** — header at `0x041000` (a 256-byte **BMW RSA-2048
-   signature**, not reproducible), manifest at `0x108000`, file data at
-   `0xf08000` (winston + ivi debug tools). We cannot modify this.
-2. **A second region at `0xf0a000`** that installs `/etc/ssl/certs/debugCA.pem`
-   onto the live rootfs. This one is a plain `HAR#$%&@` archive whose 16-byte
-   header hash field is **ZEROED**, and it is **not referenced by the signed
-   manifest**. In other words BMW drops an arbitrary file (a certificate) onto
-   the filesystem through an **unsigned** region.
+**Pass 1 (≈14:44:55) is a decoy/probe — nothing in it finalizes:**
 
-So the fix is: **build another unsigned HAR region that installs
-`/usr/share/sshd/authorized_keys.root` (our key)** — no BMW signature required,
-because this region never carried one. `mgu7/har.py` builds and parses that
-format; its self-test reconstructs the real debugCA region **byte-for-byte**,
-and builds a key region that round-trips. The flashed `debugCA.pem` decompresses
-to the *BMW Supplier Debug-Token CA* (zlib-compressed inside the HAR).
+| frame | TX | ECU response | meaning |
+|-------|----|--------------|---------|
+| 30 | `34 00 44 00F08000 01337000` (bogus huge size) | `74 …` positive | opens an `f08000` download |
+| 31 | `34 00 44 00F0A000 00000637` | **`7F 34 22`** | `f0a000` download **REJECTED** (sequence error — `f08000` still open) |
+| 32–33 | `36 01 …`, `36 02 …` (debugCA HAR) | `76 …` positive | the debugCA bytes land in the still-open **`f08000`** download, NOT at `f0a000` |
+| 34 | `37` (finish) | **`7F 37 72`** | finish **REJECTED** — that `f08000` write is **discarded** |
+| 35–36 | `31 01 …` routines | **`7F 31 22`** | apply routines **REJECTED** |
 
-Remaining bench check (one unit): confirm the unit applies our extended/!
-parallel unsigned region and that the file lands under `/usr/share/sshd`
-(debugCA lands in `/etc`, which is writable; `/usr` may be read-only at apply
-time). The mechanism itself is proven from the real images.
+**Pass 2 (≈14:45:37) is the real flash:** `f08000` is re-opened with the *real*
+size `0x1e774` (`34 00 44 00F08000 0001E774` → `74 …` positive), the big
+**BMW-signed** blob is transferred, finished cleanly (`71 01 FF 01 01`), and the
+gateway apply routines `31 01 0F 0C 00` / `31 01 10 0F` succeed (`71 …`).
+
+The `f0a000` **RequestDownload** is rejected, but the debugCA HAR bytes are still
+transferred (positively ACKed, `76 01` / `76 02`) into the `f08000` download that
+frame 30 left open with the bogus `0x1337000` size. That archive has a **zeroed
+header hash** and is **not referenced by the signed manifest** — it is the one
+unchecked file the flash carries. The signed content is the big BMW-signed blob
+written to `f08000` in pass 2 (`0x1e774`, finished cleanly); that one we cannot
+modify or re-sign.
+
+### The fix-key repair (what the tool now does)
+
+`ssh_enable.py fix-key` re-runs the **exact** proven debug contract, changing
+nothing except the bytes inside that one unsigned region: it swaps the debugCA
+archive for a one-file `HAR#$%&@` that installs `/usr/share/sshd/authorized_keys.root`
+= the OpenSSH public line of asset 05 (`SHA256:boqf5v7...`, the key whose private
+half the tool writes out and connects with).
+
+- `mgu7/har.py` `replace_region_with_file()` builds the key archive and **pads it
+  to the original region's exact length** (1591 B), so the RequestDownload size
+  byte and both TransferData block lengths (1400 + 191) are unchanged.
+- `mgu7/flash.py` `patch_region_file()` rewrites only those two transfer frames.
+  Validated offline: the contract still decodes to **174 frames**, frame 30 and
+  every frame length are byte-identical, and **only the two transfer payloads
+  differ** — they now decode to our key and nothing else.
+
+Because every structural frame (session, SecurityAccess, RequestDownload, the
+signed blob, the finalize routines, the reset) is identical to a flash that
+already completes on these units, the realistic worst case is that the unit does
+not persist this unsigned region — a **no-op, not a brick**.
+
+### The one thing a bench unit still has to confirm
+
+Whether that unsigned region actually lands `/usr/share/sshd/authorized_keys.root`
+on the live rootfs (the stock key otherwise comes from the signed Application
+SWFL `000056E5`, which `fix-key` does not touch). Run `fix-key` once on a bench
+unit with `--verbose`, keep the flash journal, and check whether root login with
+the tool's key then succeeds. If it does, issue #2 is fixed over ENET with no
+signed `000056E5` image needed; if not, the journal shows exactly what the unit
+did with the region.
 
 ## SWE header (the block flashed to 0x041000) — decoded
 
