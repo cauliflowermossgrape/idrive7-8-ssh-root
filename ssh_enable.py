@@ -1,9 +1,11 @@
 import argparse
 import datetime
+import json
 import os
 import sys
 import time
 import traceback
+import urllib.parse
 if getattr(sys, 'frozen', False):
     HERE = os.path.dirname(os.path.abspath(sys.executable))
 else:
@@ -15,6 +17,8 @@ from mgu7 import diag, discovery, enroll, flash, hsfz, identity as identity_mod,
 from mgu7.flash import ID7, ID8_BDC3, ID8_BCP
 EXIT_OK = 0
 EXIT_ERROR = 1
+KNOWN_FIRMWARE_PATH = os.path.join(HERE, 'data', 'known_firmware.json')
+ISSUE_URL = 'https://github.com/cauliflowermossgrape/idrive7-8-ssh-root/issues/new'
 
 def log(*parts):
     print('[%s] %s' % (datetime.datetime.now().strftime('%H:%M:%S'), ' '.join((str(p) for p in parts))), flush=True)
@@ -62,6 +66,7 @@ class Tool:
             if self.svk.is_nbt():
                 raise SystemExit('This unit is an NBT/EVO head unit (BTLD %s); this tool only speaks MGU.' % ' '.join((r.version_hex() for r in self.svk.all_named('BTLD'))))
             raise SystemExit("Refusing to flash: this unit's BTLD is not 00003F36, so it is outside the supported MGU ID7/ID8 debug catalog. (Use --force to override.)" if not self.args.force else 'BTLD gate overridden by --force.')
+        self.check_known_firmware()
         try:
             ips = diag.read_mgu_ip(client)
             self.mgu_ip = ips[0]
@@ -71,6 +76,44 @@ class Tool:
         if self.args.mgu_ip:
             self.mgu_ip = self.args.mgu_ip
             log('MGU IP override:', self.mgu_ip)
+
+    def _load_known_firmware(self):
+        try:
+            with open(KNOWN_FIRMWARE_PATH, 'r', encoding='utf-8') as f:
+                return set(json.load(f))
+        except (OSError, ValueError):
+            return set()
+
+    def check_known_firmware(self):
+        """Log whether this unit's SWFL (software-flash version) has been
+        confirmed with this tool before. Never changes behaviour - purely
+        informational. On a miss, prints a pre-filled GitHub issue link
+        (title + body only; GitHub still requires a manual "Submit new
+        issue" click, nothing is posted automatically). The link
+        deliberately omits the VIN and CAFD (vehicle coding, not a
+        firmware release) - only release-identifying SVK records go in."""
+        swfl = self.svk.find('SWFL') if self.svk else None
+        if swfl is None:
+            return
+        tag = str(swfl)
+        if tag in self._load_known_firmware():
+            log('Firmware confirmed with this tool:', tag)
+            return
+        log('Firmware not yet confirmed with this tool:', tag)
+        btld = self.svk.find('BTLD')
+        hwel = self.svk.find('HWEL')
+        body_lines = [
+            'A user has detected a new firmware version when trying to run `ssh_enable.py %s --arch %s`.' % (self.args.action, self.args.arch),
+            '',
+            '- %s' % tag,
+            '- %s' % (str(btld) if btld else 'BTLD: unknown'),
+            '- %s' % (str(hwel) if hwel else 'HWEL: unknown'),
+            '',
+            '(No VIN or CAFD/coding data included.)',
+        ]
+        params = urllib.parse.urlencode({'title': 'New firmware version detected: %s' % tag, 'body': '\n'.join(body_lines)})
+        log('Not in data/known_firmware.json. To help confirm it for others, open (review before submitting):')
+        log('  %s?%s' % (ISSUE_URL, params))
 
     def journal(self, direction, frame):
         if not self.args.verbose:
