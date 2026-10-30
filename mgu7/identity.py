@@ -21,6 +21,8 @@ import sys
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
+from . import sshcli
+
 if getattr(sys, "frozen", False):
     HERE = os.path.dirname(os.path.abspath(sys.executable))
 else:
@@ -198,10 +200,11 @@ class Identity:
             with open(path, "wb") as f:
                 f.write(blob)
             if name in ("id_rsa", "id_rsa.pkcs1.pem", "id_rsa.pkcs8.pem", "id_rsa.ppk"):
-                try:
-                    os.chmod(path, 0o600)
-                except OSError:
-                    pass
+                # Lock the saved private key to the current user. On Windows a
+                # plain chmod does NOT strip the inherited 'Users' read ACE, so
+                # a manual `ssh -i data\enrollments\...\id_rsa` would be rejected
+                # as an 'UNPROTECTED PRIVATE KEY FILE'. secure_key_file fixes it.
+                sshcli.secure_key_file(path)
             paths[name] = path
         if meta is not None:
             path = os.path.join(directory, "metadata.json")

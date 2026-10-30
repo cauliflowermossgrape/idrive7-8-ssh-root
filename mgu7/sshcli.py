@@ -64,6 +64,34 @@ def empty_known_hosts():
                 pass
 
 
+def secure_key_file(path):
+    """Lock *path* down so the OpenSSH client will accept it as a private key.
+
+    On Windows a key written under the user's profile/Desktop inherits an ACL
+    that grants the Users / Authenticated Users group read access; OpenSSH then
+    refuses it with 'UNPROTECTED PRIVATE KEY FILE' / 'bad permissions' and the
+    key 'will be ignored'. Python's os.chmod(0o600) does NOT fix this on Windows
+    (it only toggles the read-only bit, not the ACL). We grant the current user
+    full control and then strip every inherited ACE, so the final DACL is this
+    user only - which satisfies OpenSSH and still lets us rewrite/delete it. On
+    POSIX a plain 0600 is enough. Best-effort: never raises."""
+    try:
+        if os.name == 'nt':
+            user = os.environ.get('USERNAME') or os.environ.get('USER') or ''
+            if user:
+                # Grant first, THEN drop inheritance: if the grant name failed to
+                # resolve, inheritance:r alone would leave the file with no ACEs
+                # at all (unreadable even by us), which is worse than too-open.
+                subprocess.run(['icacls', path, '/grant:r', '%s:F' % user],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                subprocess.run(['icacls', path, '/inheritance:r'],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
+            os.chmod(path, 0o600)
+    except (OSError, ValueError):
+        pass
+
+
 def ssh_binary():
     return shutil.which('ssh') or ('ssh.exe' if os.name == 'nt' else 'ssh')
 
@@ -102,18 +130,7 @@ def prepared_key(key_path):
         yield key_path
         return
     try:
-        if os.name == 'nt':
-            user = os.environ.get('USERNAME') or os.environ.get('USER') or ''
-            if user:
-                # Grant the owner full control, then drop every inherited ACE
-                # (Users/Authenticated Users). Final DACL = this user only,
-                # which satisfies OpenSSH and still lets us rewrite/delete.
-                subprocess.run(['icacls', tmp, '/grant:r', '%s:F' % user],
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                subprocess.run(['icacls', tmp, '/inheritance:r'],
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        else:
-            os.chmod(tmp, 0o600)
+        secure_key_file(tmp)
         yield tmp
     finally:
         try:

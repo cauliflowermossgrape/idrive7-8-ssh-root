@@ -190,6 +190,12 @@ class App:
 
         self.action_buttons = [self.btn_flash, self.btn_enable, self.btn_disable, self.btn_fix]
 
+        # log-console header: label + a button to open the saved session logs
+        loghdr = ttk.Frame(self.root, padding=(16, 4, 16, 0))
+        loghdr.pack(fill="x")
+        ttk.Label(loghdr, text="Session log (saved to data\\logs\\):", style="Hint.TLabel").pack(side="left")
+        ttk.Button(loghdr, text="Open logs folder", command=self.open_logs_folder).pack(side="right")
+
         # log console
         console = ttk.Frame(self.root, padding=(16, 0, 16, 8))
         console.pack(fill="both", expand=True)
@@ -210,6 +216,26 @@ class App:
         self.out.insert("end", text)
         self.out.see("end")
         self.out.configure(state="disabled")
+
+    def open_logs_folder(self):
+        """Open the folder holding the saved session logs (creating it if the
+        tool has not been run yet), so a log is easy to attach to an issue."""
+        folder = os.path.join(HERE, "data", "logs")
+        try:
+            os.makedirs(folder, exist_ok=True)
+        except OSError:
+            pass
+        try:
+            if sys.platform == "win32":
+                os.startfile(folder)  # noqa: S606 - open in Explorer
+            elif sys.platform == "darwin":
+                import subprocess
+                subprocess.Popen(["open", folder])
+            else:
+                import subprocess
+                subprocess.Popen(["xdg-open", folder])
+        except Exception as e:  # noqa: BLE001
+            messagebox.showinfo("Logs folder", "Session logs are saved in:\n%s\n\n(%s)" % (folder, e))
 
     def _drain(self):
         try:

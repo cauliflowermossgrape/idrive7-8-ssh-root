@@ -2,6 +2,7 @@ import argparse
 import datetime
 import os
 import sys
+import tempfile
 import time
 import traceback
 if getattr(sys, 'frozen', False):
@@ -16,8 +17,68 @@ from mgu7.flash import ID7, ID8_BDC3, ID8_BCP
 EXIT_OK = 0
 EXIT_ERROR = 1
 
+# A session log file mirrors everything log()/journal() emit, so a full record
+# of a run (every step, and every HSFZ frame even without --verbose) is on disk
+# for issue reports. Opened per run in main(); None means console-only.
+_LOG_FH = None
+
+
+def _write_log_file(line):
+    if _LOG_FH is not None:
+        try:
+            _LOG_FH.write(line + '\n')
+            _LOG_FH.flush()
+        except (OSError, ValueError):
+            pass
+
+
 def log(*parts):
-    print('[%s] %s' % (datetime.datetime.now().strftime('%H:%M:%S'), ' '.join((str(p) for p in parts))), flush=True)
+    line = '[%s] %s' % (datetime.datetime.now().strftime('%H:%M:%S'),
+                        ' '.join((str(p) for p in parts)))
+    print(line, flush=True)
+    _write_log_file(line)
+
+
+def _session_log_path(args):
+    """Where to write the session log, or None if disabled. --log wins; else an
+    auto-named file under data/logs/, falling back to the temp dir."""
+    if getattr(args, 'no_log', False):
+        return None
+    if getattr(args, 'log', None):
+        return args.log
+    stamp = datetime.datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
+    name = 'session-%s-%s.log' % (stamp, getattr(args, 'action', 'run'))
+    for base in (os.path.join(HERE, 'data', 'logs'),
+                 os.path.join(tempfile.gettempdir(), 'mgu-ssh-logs')):
+        try:
+            os.makedirs(base, exist_ok=True)
+            return os.path.join(base, name)
+        except OSError:
+            continue
+    return None
+
+
+def _open_session_log(args):
+    global _LOG_FH
+    path = _session_log_path(args)
+    if not path:
+        return None
+    try:
+        _LOG_FH = open(path, 'a', encoding='utf-8')
+    except OSError:
+        _LOG_FH = None
+        return None
+    return path
+
+
+def _close_session_log():
+    global _LOG_FH
+    if _LOG_FH is not None:
+        try:
+            _LOG_FH.close()
+        except OSError:
+            pass
+        _LOG_FH = None
 
 class Tool:
 
@@ -73,10 +134,14 @@ class Tool:
             log('MGU IP override:', self.mgu_ip)
 
     def journal(self, direction, frame):
-        if not self.args.verbose:
-            return
         tag = 'TX' if direction == 'tx' else 'RX'
-        log('%s %02X>%02X type %04X: %s' % (tag, frame.src, frame.dst, frame.type, frame.payload[:64].hex(' ') + (' (%d bytes)' % len(frame.payload) if len(frame.payload) > 64 else '')))
+        text = '%s %02X>%02X type %04X: %s' % (tag, frame.src, frame.dst, frame.type, frame.payload[:64].hex(' ') + (' (%d bytes)' % len(frame.payload) if len(frame.payload) > 64 else ''))
+        if self.args.verbose:
+            log(text)  # console + file
+        else:
+            # Keep a full frame trace in the session file even when the console
+            # is quiet, so a run can always be diagnosed from the log on disk.
+            _write_log_file('[%s] %s' % (datetime.datetime.now().strftime('%H:%M:%S'), text))
 
     def probe(self, host, port=22, timeout=3.0):
         ok, ms = enroll.probe_port(host, port, timeout=timeout)
@@ -725,7 +790,14 @@ def main(argv=None):
     parser.add_argument('--persist', action='store_true', help='after enable/flash, make SSH start on every boot and turn debug mode off (clears the B7F8E5 DTC)')
     parser.add_argument('--keep-debug', action='store_true', help='when persisting, leave debug mode ON (do not run 31 02 A0 FD); the B7F8E5 DTC will remain')
     parser.add_argument('--verbose', action='store_true', help='print every HSFZ frame')
+    parser.add_argument('--log', metavar='PATH', help='write the full session log to PATH (default: an auto-named file under data/logs/)')
+    parser.add_argument('--no-log', action='store_true', help='do not write a session log file to disk')
     args = parser.parse_args(argv)
+    log_path = _open_session_log(args)
+    if log_path:
+        log('=== MGU-SSH session %s UTC | action=%s ===' % (
+            datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'), args.action))
+        log('Full session log: %s' % log_path)
     tool = Tool(args)
     try:
         if args.action == 'status':
@@ -755,6 +827,7 @@ def main(argv=None):
             tool.client and tool.client.close()
         except OSError:
             pass
+        _close_session_log()
     return EXIT_OK
 if __name__ == '__main__':
     sys.exit(main())

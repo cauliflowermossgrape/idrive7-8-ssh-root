@@ -1,6 +1,10 @@
 # Per-car SSH keys generated at enrollment - never commit private keys
 data/enrollments/
 
+# Session logs (may contain VIN / MGU IP) - never commit
+data/logs/
+*.log
+
 # Python / PyInstaller build artifacts
 __pycache__/
 *.pyc
