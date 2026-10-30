@@ -10,11 +10,15 @@ PyInstaller (build_exe.bat).
 
 import os
 import queue
+import re
 import sys
 import threading
+import webbrowser
 
 import tkinter as tk
 from tkinter import messagebox, scrolledtext, ttk
+
+_URL_RE = re.compile(r'https?://\S+')
 
 if getattr(sys, "frozen", False):
     HERE = os.path.dirname(os.path.abspath(sys.executable))
@@ -78,6 +82,7 @@ class App:
         self.root = root
         self.q = queue.Queue()
         self.worker = None
+        self._link_n = 0
 
         root.title("MGU iDrive SSH Tool")
         root.configure(bg=BG)
@@ -194,7 +199,17 @@ class App:
 
     def _append(self, text):
         self.out.configure(state="normal")
+        start = self.out.index("end-1c")
         self.out.insert("end", text)
+        for m in _URL_RE.finditer(text):
+            tag = "link%d" % self._link_n
+            self._link_n += 1
+            a, b = "%s+%dc" % (start, m.start()), "%s+%dc" % (start, m.end())
+            self.out.tag_add(tag, a, b)
+            self.out.tag_config(tag, foreground="#4da3ff", underline=True)
+            self.out.tag_bind(tag, "<Button-1>", lambda e, url=m.group(0): webbrowser.open(url))
+            self.out.tag_bind(tag, "<Enter>", lambda e: self.out.configure(cursor="hand2"))
+            self.out.tag_bind(tag, "<Leave>", lambda e: self.out.configure(cursor=""))
         self.out.see("end")
         self.out.configure(state="disabled")
 
