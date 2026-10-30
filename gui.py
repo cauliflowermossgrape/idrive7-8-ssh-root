@@ -54,6 +54,7 @@ HEADER_FG = "#ffffff"
 ACCENT = "#1f6feb"
 GREEN = "#1f9d55"
 RED = "#c23b3b"
+AMBER = "#d9822b"
 MUTED = "#64748b"
 CONSOLE_BG = "#0f131a"
 CONSOLE_FG = "#d6dbe5"
@@ -118,6 +119,7 @@ class App:
         button("Primary.TButton", ACCENT, "#1a5fd0")
         button("Green.TButton", GREEN, "#17824a")
         button("Red.TButton", RED, "#a93030")
+        button("Amber.TButton", AMBER, "#b46a1f")
         st.configure("Detect.TButton", background=HEADER, foreground="#ffffff",
                      font=("Segoe UI", 9, "bold"), padding=(10, 6), borderwidth=0)
         st.map("Detect.TButton", background=[("active", "#1d4273"), ("disabled", "#9aa4b2")])
@@ -164,6 +166,17 @@ class App:
         self.btn_flash.grid(row=0, column=0, sticky="ew", padx=(0, 6))
         self.btn_enable.grid(row=0, column=1, sticky="ew", padx=6)
         self.btn_disable.grid(row=0, column=2, sticky="ew", padx=(6, 0))
+
+        # repair action (issue #2): re-flash carrying our root key in the one
+        # unsigned region, for units that enroll + open port 22 but still refuse
+        # login because their stock authorized_keys.root holds a different key.
+        fix = ttk.Frame(body)
+        fix.pack(fill="x", pady=(8, 0))
+        self.btn_fix = ttk.Button(fix, text="Fix refusing SSH key", style="Amber.TButton", command=self.do_fix_key)
+        self.btn_fix.pack(fill="x")
+        ttk.Label(fix, text="Login refused after a successful flash? Re-flashes with our key in the unsigned region (writes the VIN; reboots the unit).",
+                  style="Hint.TLabel").pack(anchor="w", pady=(2, 0))
+
         opt = ttk.Frame(body)
         opt.pack(fill="x", pady=(10, 0))
         ttk.Checkbutton(opt, text="Turn debug mode off after enabling (clears the B7F8E5 DTC)",
@@ -175,7 +188,7 @@ class App:
         ttk.Label(opt, text="Swaps the shared dev key for a per-car key. Can only be done ONCE - if you lose the key or reflash, you can't create a new identity. Leave off unless you know why you need it.",
                   style="Hint.TLabel").pack(anchor="w")
 
-        self.action_buttons = [self.btn_flash, self.btn_enable, self.btn_disable]
+        self.action_buttons = [self.btn_flash, self.btn_enable, self.btn_disable, self.btn_fix]
 
         # log console
         console = ttk.Frame(self.root, padding=(16, 0, 16, 8))
@@ -273,6 +286,25 @@ class App:
             "VIN %s will be written to the unit.\n\nContinue?" % self.vin.get().strip()):
             return
         self._run(["flash"] + self._persist_args() + self._common_args(), "flash")
+
+    def do_fix_key(self):
+        if not self.vin.get().strip():
+            messagebox.showerror("VIN required",
+                                 "Fix-key re-flashes the debug image (writing the VIN to the unit),\n"
+                                 "so the VIN is required. Enter it or click Detect VIN first.")
+            return
+        if not messagebox.askyesno(
+            "Fix the refusing SSH key?",
+            "For units that flash + enroll fine and open port 22, but still refuse\n"
+            "root login because their stock key differs.\n\n"
+            "This re-flashes the debug image carrying OUR key in the one unsigned\n"
+            "region (replacing debugCA). It only changes that region's bytes, so the\n"
+            "worst case is the key not persisting - not a brick. The head unit enters\n"
+            "programming mode and reboots, and (like any flash) CAFD coding is cleared;\n"
+            "restore it from your backup.\n\n"
+            "VIN %s will be written to the unit.\n\nContinue?" % self.vin.get().strip()):
+            return
+        self._run(["fix-key"] + self._persist_args() + self._common_args(), "fix-key")
 
     def do_disable(self):
         if not messagebox.askyesno("Disable SSH?",

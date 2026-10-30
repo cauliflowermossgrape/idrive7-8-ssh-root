@@ -369,6 +369,50 @@ class FlashResult:
     def summary(self):
         return 'Flash sequence finished: %d frames, %d security responses, %d pending responses, %d response warning(s), including %d legacy-response advance(s). Expected compatibility response: %d.' % (self.frames, self.keys, self.pendings, self.warnings, self.legacy_advances, self.expected_compat)
 
+def patch_region_file(data, path, filedata):
+    """Rewrite the ONE unsigned HAR region of a built FlashData so it installs
+    *path*/*filedata* instead of the stock file it carried (debugCA).
+
+    The debug contract writes a single unsigned HAR region (RequestDownload to
+    ...F0 A0 xx) that is NOT covered by the BMW signature. This replaces its
+    content with our own one-file archive, padded to the original region's exact
+    length, then re-splits it across the SAME TransferData frames with the SAME
+    block numbers and lengths. The frame count, every frame length, the
+    RequestDownload and the whole rest of the proven sequence are unchanged - only
+    the content bytes of that region's transfer frames differ. Returns a small
+    info dict (region size + frame indices touched)."""
+    frames = data.frames
+    rd = None
+    for i, f in enumerate(frames):
+        p = f.payload
+        if len(p) >= 7 and p[0] == 52 and p[4] == 240 and p[5] == 160:  # 34 .. F0 A0
+            rd = i
+            break
+    if rd is None:
+        raise FlashError('This flash contract has no unsigned HAR region (F0A0 '
+                         'RequestDownload); the key-flash repair is not available for it.')
+    xf = []
+    j = rd + 1
+    while j < len(frames) and frames[j].payload and frames[j].payload[0] == 54:  # 0x36
+        xf.append(j)
+        j += 1
+    if not xf:
+        raise FlashError('The unsigned HAR region carries no TransferData frames.')
+    orig = b''.join(frames[k].payload[2:] for k in xf)
+    from . import har
+    region = har.replace_region_with_file(orig, path, filedata)
+    if len(region) != len(orig):
+        raise FlashError('The patched region length changed (%d != %d).' % (len(region), len(orig)))
+    pos = 0
+    for k in xf:
+        old = frames[k]
+        blen = len(old.payload) - 2
+        new_payload = bytes((54, old.payload[1])) + region[pos:pos + blen]
+        pos += blen
+        frames[k] = PFrame(HFrame(old.h.type, old.h.src, old.h.dst, new_payload))
+    return {'rd_index': rd, 'transfer_indices': xf, 'region_bytes': len(orig)}
+
+
 class FlashEngine:
 
     def __init__(self, client, operands, gate=None, response_timeout_ms=RESPONSE_TIMEOUT_MS, tester_present_ms=SLEEP_TESTER_PRESENT_MS, hard_reset_ms=SLEEP_HARD_RESET_MS):

@@ -37,12 +37,17 @@ python gui.py
 ```
 
 The window (above) has a VIN field + **Detect VIN** (auto-reads it from the car
-over ENET) and three buttons:
+over ENET) and these buttons:
 
 - **Flash + Enable** - first-time setup: flash the debug image, enroll, make SSH
   permanent.
 - **Enable** - re-open SSH on an already-flashed unit (no flashing).
 - **Disable** - revert persistence and stop debug/SSH.
+- **Fix refusing SSH key** - repair for units that flash + enroll fine and open
+  port 22 but still refuse root login (`Permission denied (publickey)`), because
+  their stock `authorized_keys.root` holds a different key. Re-flashes the debug
+  image carrying **our** key in the one unsigned region - see
+  [Login still refused?](#login-still-refused-fix-refusing-ssh-key).
 
 Two tick-boxes: **Turn debug mode off after enabling** (on by default; keeps SSH
 up with no `B7F8E5` DTC) and **Give this car its own unique SSH key** (off by
@@ -58,10 +63,43 @@ python ssh_enable.py status     # read the current debug/SSH state (read-only)
 python ssh_enable.py flash --vin WBS1234ABCDX12345   # one-time: flash the
                                  # debug package, then enable SSH
 python ssh_enable.py enable     # re-open SSH on an already-flashed unit (no flashing)
+python ssh_enable.py fix-key --vin WBS1234ABCDX12345  # re-flash carrying our key
+                                 # (repair for units that refuse login - issue #2)
 python ssh_enable.py persist    # make SSH survive debug mode being OFF
 python ssh_enable.py close      # turn the SSH service off again
 python ssh_enable.py disable    # revert persistence + stop debug/SSH
 ```
+
+## Login still refused? (Fix refusing SSH key)
+
+On some software levels (seen on `BTLD 030.016.006` / `SWFL 030.016.002`) the
+flash and enrollment both succeed and **port 22 opens**, but root login is still
+refused with `Permission denied (publickey)`. That is because the key `sshd`
+trusts lives in the signed Application SWFL `000056E5`
+(`/usr/share/sshd/authorized_keys.root`), and on those units it is a different
+key from the one the tool hands you - nothing in a normal flash overwrites it.
+
+**Fix refusing SSH key** (`fix-key`) repairs this. It re-runs the exact same
+proven debug flash, but the one unsigned region the flash already carries (the
+part not covered by the BMW signature) now installs **our** key at
+`/usr/share/sshd/authorized_keys.root` instead of the stock debug cert. Only that
+region's bytes change; every other frame - security access, the signed blob, the
+finalize routines, the reset - is identical to a normal flash, so the realistic
+worst case is simply that the key does not take, **not** a brick.
+
+```
+python ssh_enable.py fix-key --vin <YOUR_VIN> --verbose
+```
+
+or click **Fix refusing SSH key** in the GUI. Like any flash it writes the VIN,
+reboots the unit, and clears `CAFD` coding - restore it from your backup
+afterwards. Keep the `--verbose` log of the first run; it records exactly what
+the unit did with the region.
+
+> First tried an older build that failed on Windows with
+> `REMOTE HOST IDENTIFICATION HAS CHANGED` / `Offending ED25519 key in nul`? That
+> was a separate known-hosts bug (the login was aborted before the key was even
+> offered) and is already fixed - make sure you are on the current build.
 
 ## ⚠️ Back up your coding before flashing ⚠️ 
 
@@ -274,6 +312,11 @@ Run it from source with `python gui.py` (see [Quick start](#quick-start---the-gu
 or use the standalone Windows `.exe` - **no Python needed**. It runs the exact
 same code as the command line and streams the log into the window. Connection
 details (gateway / variant / MGU IP) live in a small optional row.
+
+**Prebuilt (test-features branch):** download **`MGU-SSH-windows.zip`** from the
+repo root, unzip anywhere, and run `MGU-SSH\MGU-SSH.exe`. Keep the whole folder
+together. (Built with PyInstaller from the sources in this branch; rebuild it
+yourself any time with `build_exe.bat`.)
 
 ### Build the Windows .exe
 
