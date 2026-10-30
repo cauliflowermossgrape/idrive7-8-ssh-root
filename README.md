@@ -313,9 +313,10 @@ or use the standalone Windows `.exe` - **no Python needed**. It runs the exact
 same code as the command line and streams the log into the window. Connection
 details (gateway / variant / MGU IP) live in a small optional row.
 
-**Prebuilt (test-features branch):** download **`MGU-SSH-windows.zip`** from the
-repo root, unzip anywhere, and run `MGU-SSH\MGU-SSH.exe`. Keep the whole folder
-together. (Built with PyInstaller from the sources in this branch; rebuild it
+**Prebuilt:** download **`MGU-SSH-windows.zip`** from the
+[Releases page](https://github.com/cauliflowermossgrape/idrive7-8-ssh-root/releases),
+unzip anywhere, and run `MGU-SSH\MGU-SSH.exe`. Keep the whole folder
+together. (Built with PyInstaller from these sources; rebuild it
 yourself any time with `build_exe.bat`.)
 
 ### Build the Windows .exe

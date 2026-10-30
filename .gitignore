@@ -6,3 +6,6 @@ __pycache__/
 *.pyc
 build/
 dist/
+
+# Prebuilt app bundles - distributed via GitHub Releases, not committed
+*.zip
