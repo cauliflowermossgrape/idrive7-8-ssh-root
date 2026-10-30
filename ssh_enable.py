@@ -99,7 +99,6 @@ class Tool:
         if tag in self._load_known_firmware():
             log('Firmware confirmed with this tool:', tag)
             return
-        log('Firmware not yet confirmed with this tool:', tag)
         btld = self.svk.find('BTLD')
         hwel = self.svk.find('HWEL')
         body_lines = [
@@ -112,8 +111,14 @@ class Tool:
             '(No VIN or CAFD/coding data included.)',
         ]
         params = urllib.parse.urlencode({'title': 'New firmware version detected: %s' % tag, 'body': '\n'.join(body_lines)})
-        log('Not in data/known_firmware.json. To help confirm it for others, open (review before submitting):')
-        log('  %s?%s' % (ISSUE_URL, params))
+        log('')
+        log('-' * 64)
+        log('New firmware version detected:', tag)
+        log('This one is not yet confirmed working with this tool. Help')
+        log('confirm it for others - review and submit this issue:')
+        log('-' * 64)
+        log(' ', '%s?%s' % (ISSUE_URL, params))
+        log('')
 
     def journal(self, direction, frame):
         if not self.args.verbose:
