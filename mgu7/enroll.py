@@ -179,8 +179,15 @@ def validate_routine_response(raw_frames, request, src=MGU, where=''):
         raise EnrollError(str(e))
     return x
 
+def _pem_crlf(blob):
+    return bytes(blob).replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')
+
+def build_install_request(certificate, pmo_certificate_pem):
+    # Match the Windows wire format without changing the certificate assets.
+    return ROUTINE_INSTALL + _pem_crlf(certificate.pem_bytes()) + _pem_crlf(pmo_certificate_pem)
+
 def install_certificate(client, certificate, pmo_certificate_pem, dst=MGU):
-    request = ROUTINE_INSTALL + certificate.pem_bytes() + bytes(pmo_certificate_pem)
+    request = build_install_request(certificate, pmo_certificate_pem)
     raw = client.request(dst, request, P_ADVANCED)
     validate_routine_response(raw, request, dst, 'install')
 
@@ -231,7 +238,7 @@ class Enroll:
 
     def install(self, certificate):
         a = self._assets()
-        request = ROUTINE_INSTALL + certificate.pem_bytes() + a.raw(3)
+        request = build_install_request(certificate, a.raw(3))
         self.uds.transport.request(self.uds.dst, request, P_ADVANCED)
 
     def confirm(self):
