@@ -11,7 +11,8 @@ Optionally (advanced, off by default) it can give a car its own **unique SSH key
 ![MGU iDrive SSH Tool](docs/screenshot.png)
 
 > **Disclaimer** - for use on **your own vehicle**, at your own risk. Flashing a
-> head unit can wipe its coding and, in the worst case, brick the module. Read
+> head unit can wipe its coding, delete its **BMW Digital Key** pairings and,
+> in the worst case, brick the module. Read
 > **Back up your coding before flashing** (below) first. The authors take no
 > responsibility for any damage.
 
@@ -123,6 +124,16 @@ development, and restoring from a backup fixed it.
 
 Only `flash` carries this risk - `enable`, `persist`, `close`, `disable` and
 `status` do not reprogram the unit.
+
+### BMW Digital Key (issue #13)
+
+**Yes - flashing deletes the car's Digital Key pairings.** Reported on a real
+car ([issue #13](https://github.com/cauliflowermossgrape/idrive7-8-ssh-root/issues/13),
+G26 2023, iPhone): after the flash the phone's digital key was gone and had
+to be **set up again as new**. The coding backup above does not cover the
+digital keys, so plan on re-pairing every key after any flash (`flash` and
+`fix-key` alike). If flashing loses something else on your car, please open an
+issue so it can be documented here.
 
 ## What it does
 
