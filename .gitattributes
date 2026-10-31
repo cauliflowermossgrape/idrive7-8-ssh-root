@@ -1,0 +1,7 @@
+# Shell scripts run on the MGU's BusyBox shell and MUST use LF line endings.
+# A CRLF checkout (Git for Windows with core.autocrlf=true) makes the on-unit
+# shell fail with "set: illegal option -" on the first option line. Force LF.
+*.sh text eol=lf
+
+# Windows helpers keep CRLF.
+*.bat text eol=crlf

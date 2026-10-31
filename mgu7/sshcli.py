@@ -182,14 +182,22 @@ def probe_login(host, key_path, user=SSH_USER, port=SSH_PORT, timeout=30,
 
 
 def push_and_run(host, key_path, local_file, remote, args='', user=SSH_USER,
-                 port=SSH_PORT, timeout=60):
+                 port=SSH_PORT, timeout=60, normalize_eol=False):
     """Upload a local script to *remote* (via cat over the ssh channel, no scp
-    needed) and run it with `sh`, then delete it. Returns (rc, stdout, stderr)."""
+    needed) and run it with `sh`, then delete it. Returns (rc, stdout, stderr).
+
+    With normalize_eol=True, CRLF/CR line endings are converted to LF before
+    upload. The MGU's BusyBox shell treats a trailing CR as part of the token,
+    so a CRLF script fails with "set: illegal option -" on the first option
+    line. A Windows checkout (core.autocrlf) or a Notepad edit can introduce
+    CRLF, so shell scripts are always normalized."""
     try:
         with open(local_file, 'rb') as f:
             data = f.read()
     except OSError as e:
         return 255, '', 'cannot read %s: %s' % (local_file, e)
+    if normalize_eol:
+        data = data.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
     rc, out, err = run(host, key_path,
                        "cat > '%s' && chmod +x '%s'" % (remote, remote),
                        user, port, timeout=30, stdin_data=data)

@@ -186,10 +186,28 @@ def build_install_request(certificate, pmo_certificate_pem):
     # Match the Windows wire format without changing the certificate assets.
     return ROUTINE_INSTALL + _pem_crlf(certificate.pem_bytes()) + _pem_crlf(pmo_certificate_pem)
 
+# RoutineControl 0xA0FD (start) reports debug-mode activation in the status
+# byte of its positive reply: "71 01 A0 FD <status>". A known-good capture
+# returns 0x00 on success (port 22 then opens on its own); a unit that accepts
+# the certificate but refuses to activate returns 0x01. 0x00 is the only
+# success - any other value is a rejection, not an install.
+ROUTINE_STATUS_OK = 0x00
+
+
 def install_certificate(client, certificate, pmo_certificate_pem, dst=MGU):
+    """Install the enrollment certificate (RoutineControl start 0xA0FD) and
+    return the routine status byte. 0x00 = debug mode activated; any other
+    value means the unit rejected activation and the caller must treat the
+    enrollment as failed. Raises EnrollError on a malformed reply."""
     request = build_install_request(certificate, pmo_certificate_pem)
     raw = client.request(dst, request, P_ADVANCED)
-    validate_routine_response(raw, request, dst, 'install')
+    x = validate_routine_response(raw, request, dst, 'install')
+    data = x.data
+    if len(data) < 5 or data[1:4] != ROUTINE_INSTALL[1:4]:
+        raise EnrollError(
+            'The A0 FD install reply was not a routine status (expected '
+            '"71 01 A0 FD <status>", got %s).' % data.hex())
+    return data[4]
 
 def readback_certificate_address(client, dst=MGU):
     raw = client.request(dst, DID_READBACK, P_ADVANCED)

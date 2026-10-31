@@ -90,6 +90,9 @@ class Tool:
         self.mgu_ip = None
         self.vin = (getattr(args, 'vin', None) or '').strip().upper() or None
         self.last_challenge = None
+        # Set by do_enroll from the A0 FD status byte (0x00 = debug mode
+        # activated). Defaults True so paths that never enroll are unaffected.
+        self._debug_activated = True
 
     def connect(self):
         args = self.args
@@ -287,7 +290,8 @@ class Tool:
         remote = '/tmp/sshd-always-on.sh'
         log('Uploading sshd-always-on.sh and running: sh %s %s' % (remote, mode))
         rc, out, err = sshcli.push_and_run(self.mgu_ip, identity, script_local,
-                                           remote, args=mode, timeout=60)
+                                           remote, args=mode, timeout=60,
+                                           normalize_eol=True)
         for line in (out + err).splitlines():
             log('  | ' + line)
         if rc != 0:
@@ -513,10 +517,22 @@ class Tool:
         if verified:
             log('DONE: MGU SSH enabled - connect with root + %s.' % identity)
             return EXIT_OK
+        if not self._debug_activated:
+            return self._activation_rejected(identity)
         log('FAILED: enrollment completed and port 22 is open, but SSH login as '
             'root was REJECTED (publickey denied), so SSH is NOT usable. The key '
             'written to %s is the one the unit refused. See issue #2: on some '
             'software levels the unit does not trust this key.' % identity)
+        return EXIT_ERROR
+
+    def _activation_rejected(self, identity):
+        """Common failure finish when the A0 FD routine refused to turn debug
+        mode on (status != 0x00): port 22 never opens, so this is a different
+        failure from a key rejection."""
+        log('FAILED: the unit REJECTED debug-mode activation (A0 FD status != 0x00), so '
+            'port 22 never opens and SSH is NOT usable. The certificate was accepted - this '
+            'is not a key or certificate problem; the unit declined to enable debug mode. '
+            'The key written to %s will work only once A0 FD returns 0x00.' % identity)
         return EXIT_ERROR
 
     def flash(self):
@@ -550,6 +566,8 @@ class Tool:
         if verified:
             log('DONE: MGU flashed + SSH enabled - connect with root + %s.' % identity)
             return EXIT_OK
+        if not self._debug_activated:
+            return self._activation_rejected(identity)
         log('FAILED: the flash and enrollment completed and port 22 is open, but '
             'SSH login as root was REJECTED (publickey denied), so SSH is NOT '
             'usable. The key written to %s is the one the unit refused. See issue '
@@ -603,6 +621,8 @@ class Tool:
         if verified:
             log('DONE: MGU flashed with our key + SSH enabled - connect with root + %s.' % identity)
             return EXIT_OK
+        if not self._debug_activated:
+            return self._activation_rejected(identity)
         log('FAILED: the key-flash and enrollment completed and port 22 is open, '
             'but SSH login as root was still REJECTED. On software levels where '
             'the unsigned region does not persist, the key was not written - '
@@ -668,17 +688,32 @@ class Tool:
         ssh_key = self.assets.raw(5)
         enrollment_key = enroll.RsaKeyPair.from_pem_bytes(asset1, expect_pkcs8=True)
         pmo_key = enroll.RsaKeyPair.from_pem_bytes(self.assets.raw(4), expect_pkcs8=False)
+        last_status = None
         for cycle in range(1, 6):
             challenge, payload, raw = enroll.read_challenge(self.client)
             certificate = enroll.build_certificate(challenge, enrollment_key, self.assets.raw(3), pmo_key)
             if cycle == 1:
                 log('Challenge identity:', challenge)
                 log('Generated certificate: %d bytes DER / %d bytes PEM' % (len(certificate.der), len(certificate.pem)))
-            enroll.install_certificate(self.client, certificate, self.assets.raw(3))
+            last_status = enroll.install_certificate(self.client, certificate, self.assets.raw(3))
             enroll.readback_certificate_address(self.client)
-            log('Enroll cycle %d/5: certificate installed, 172A readback accepted.' % cycle)
+            if last_status == enroll.ROUTINE_STATUS_OK:
+                log('Enroll cycle %d/5: A0 FD status 0x00 (debug mode activated), 172A readback accepted.' % cycle)
+            else:
+                log('Enroll cycle %d/5: WARNING - A0 FD returned status 0x%02X, NOT 0x00. The unit '
+                    'accepted the certificate but REJECTED activating debug mode, so SSH will not '
+                    'come up. 172A readback accepted.' % (cycle, last_status))
             if cycle < 5:
                 time.sleep(0.2)
+        # 0x00 = debug mode activated (port 22 opens on its own). Anything else
+        # means the unit refused to activate, recorded so enable()/flash() can
+        # report the real reason instead of claiming success.
+        self._debug_activated = (last_status == enroll.ROUTINE_STATUS_OK)
+        if not self._debug_activated:
+            log('Enrollment did NOT activate debug mode: the A0 FD routine returned status '
+                '0x%02X on every cycle (expected 0x00). The certificate itself was accepted, so '
+                'this is not a key or certificate problem - the unit declined to turn debug mode '
+                'on. SSH (port 22) stays closed until A0 FD returns 0x00.' % (last_status if last_status is not None else 0xFF))
         self.last_challenge = challenge
         directory = identity_mod.enrollment_dir(self.vin)
         baked = identity_mod.Identity.from_pem(ssh_key, comment='mgu-root@%s' % (self.vin or 'unit'))
