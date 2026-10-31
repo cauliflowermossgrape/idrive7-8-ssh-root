@@ -1,3 +1,5 @@
+**English** | [简体中文翻译](README.zh-CN.md)
+
 # iDrive7/8 SSH root
 
 Enable the **root SSH service** on BMW MGU head units (iDrive 7 / MGU ID7,

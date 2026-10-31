@@ -42,6 +42,7 @@ if sys.stderr is None:
     sys.stderr = _NullWriter()
 
 import ssh_enable
+from i18n import Translator
 from mgu7 import discovery
 from mgu7.flash import ID7, ID8_BDC3, ID8_BCP
 
@@ -65,13 +66,20 @@ class _QueueWriter:
 
     def __init__(self, q):
         self.q = q
+        self.pending = ""
 
     def write(self, text):
         if text:
-            self.q.put(text)
+            self.pending += text
+            while "\n" in self.pending:
+                line, self.pending = self.pending.split("\n", 1)
+                self.q.put(line + "\n")
+        return len(text)
 
     def flush(self):
-        pass
+        if self.pending:
+            self.q.put(self.pending)
+            self.pending = ""
 
 
 class App:
@@ -79,6 +87,10 @@ class App:
         self.root = root
         self.q = queue.Queue()
         self.worker = None
+        self.i18n = Translator()
+        self._labels = []
+        self._history = []
+        self._is_busy = False
 
         root.title("MGU iDrive SSH Tool")
         root.configure(bg=BG)
@@ -129,40 +141,48 @@ class App:
     def _build(self):
         header = tk.Frame(self.root, bg=HEADER)
         header.pack(fill="x")
-        tk.Label(header, text="MGU iDrive  SSH", bg=HEADER, fg=HEADER_FG,
+        self._label(tk.Label, header, "MGU iDrive  SSH", bg=HEADER, fg=HEADER_FG,
                  font=("Segoe UI Semibold", 16)).pack(side="left", padx=16, pady=12)
-        tk.Label(header, text="BMW ID7 / ID8  •  root over ENET", bg=HEADER,
+        self._label(tk.Label, header, "BMW ID7 / ID8  •  root over ENET", bg=HEADER,
                  fg="#9fb3d1", font=("Segoe UI", 9)).pack(side="left", pady=12)
 
+        language_frame = tk.Frame(header, bg=HEADER)
+        language_frame.pack(side="right", padx=12, pady=8)
+        self.language = tk.StringVar(value="English")
+        self.language_box = ttk.Combobox(language_frame, textvariable=self.language,
+            values=[data['name'] for data in self.i18n.catalogs.values()],
+            state="readonly", width=14)
+        self.language_box.pack(anchor="e")
+        self.language_box.bind("<<ComboboxSelected>>", self._change_language)
         body = ttk.Frame(self.root, padding=16)
         body.pack(fill="x")
 
         # VIN row
         vin_row = ttk.Frame(body)
         vin_row.pack(fill="x")
-        ttk.Label(vin_row, text="VIN", font=("Segoe UI", 10, "bold")).pack(side="left")
+        self._label(ttk.Label, vin_row, "VIN", font=("Segoe UI", 10, "bold")).pack(side="left")
         ttk.Entry(vin_row, textvariable=self.vin, width=24, font=("Consolas", 11)).pack(side="left", padx=8)
-        self.detect_btn = ttk.Button(vin_row, text="Detect VIN", style="Detect.TButton", command=self.detect_vin)
+        self.detect_btn = self._label(ttk.Button, vin_row, "Detect VIN", style="Detect.TButton", command=self.detect_vin)
         self.detect_btn.pack(side="left")
-        ttk.Label(vin_row, text="(auto-reads the VIN from the car)", style="Hint.TLabel").pack(side="left", padx=8)
+        self._label(ttk.Label, vin_row, "(auto-reads the VIN from the car)", style="Hint.TLabel").pack(side="left", padx=8)
 
         # advanced row (compact, secondary)
-        adv = ttk.Labelframe(body, text="CONNECTION (optional)", style="Card.TLabelframe", padding=8)
+        adv = self._label(ttk.Labelframe, body, "CONNECTION (optional)", style="Card.TLabelframe", padding=8)
         adv.pack(fill="x", pady=(12, 0))
-        ttk.Label(adv, text="Gateway").grid(row=0, column=0, sticky="w", padx=(0, 6))
+        self._label(ttk.Label, adv, "Gateway").grid(row=0, column=0, sticky="w", padx=(0, 6))
         ttk.Entry(adv, textvariable=self.gateway, width=16).grid(row=0, column=1, sticky="w")
-        ttk.Label(adv, text="Variant").grid(row=0, column=2, sticky="w", padx=(16, 6))
+        self._label(ttk.Label, adv, "Variant").grid(row=0, column=2, sticky="w", padx=(16, 6))
         ttk.OptionMenu(adv, self.arch, self.arch.get(), *ARCHES).grid(row=0, column=3, sticky="w")
-        ttk.Label(adv, text="MGU IP").grid(row=0, column=4, sticky="w", padx=(16, 6))
+        self._label(ttk.Label, adv, "MGU IP").grid(row=0, column=4, sticky="w", padx=(16, 6))
         ttk.Entry(adv, textvariable=self.mgu_ip, width=16).grid(row=0, column=5, sticky="w")
 
         # the three actions
         actions = ttk.Frame(body)
         actions.pack(fill="x", pady=(16, 0))
         actions.columnconfigure((0, 1, 2), weight=1, uniform="a")
-        self.btn_flash = ttk.Button(actions, text="Flash + Enable", style="Primary.TButton", command=self.do_flash)
-        self.btn_enable = ttk.Button(actions, text="Enable", style="Green.TButton", command=self.do_enable)
-        self.btn_disable = ttk.Button(actions, text="Disable", style="Red.TButton", command=self.do_disable)
+        self.btn_flash = self._label(ttk.Button, actions, "Flash + Enable", style="Primary.TButton", command=self.do_flash)
+        self.btn_enable = self._label(ttk.Button, actions, "Enable", style="Green.TButton", command=self.do_enable)
+        self.btn_disable = self._label(ttk.Button, actions, "Disable", style="Red.TButton", command=self.do_disable)
         self.btn_flash.grid(row=0, column=0, sticky="ew", padx=(0, 6))
         self.btn_enable.grid(row=0, column=1, sticky="ew", padx=6)
         self.btn_disable.grid(row=0, column=2, sticky="ew", padx=(6, 0))
@@ -179,14 +199,14 @@ class App:
 
         opt = ttk.Frame(body)
         opt.pack(fill="x", pady=(10, 0))
-        ttk.Checkbutton(opt, text="Turn debug mode off after enabling (clears the B7F8E5 DTC)",
+        self._label(ttk.Checkbutton, opt, "Turn debug mode off after enabling (clears the B7F8E5 DTC)",
                         variable=self.disable_debug).pack(anchor="w")
-        ttk.Label(opt, text="On = SSH stays up with debug off (recommended).  Off = SSH persistent but debug mode stays on.",
-                  style="Hint.TLabel").pack(anchor="w")
-        ttk.Checkbutton(opt, text="Give this car its own unique SSH key  (advanced - NOT recommended)",
+        self._label(ttk.Label, opt, "On = SSH stays up with debug off (recommended).  Off = SSH persistent but debug mode stays on.",
+                  style="Hint.TLabel", wraplength=720, justify="left").pack(anchor="w")
+        self._label(ttk.Checkbutton, opt, "Give this car its own unique SSH key  (advanced - NOT recommended)",
                         variable=self.unique_key).pack(anchor="w", pady=(6, 0))
-        ttk.Label(opt, text="Swaps the shared dev key for a per-car key. Can only be done ONCE - if you lose the key or reflash, you can't create a new identity. Leave off unless you know why you need it.",
-                  style="Hint.TLabel").pack(anchor="w")
+        self._label(ttk.Label, opt, "Swaps the shared dev key for a per-car key. Can only be done ONCE - if you lose the key or reflash, you can't create a new identity. Leave off unless you know why you need it.",
+                  style="Hint.TLabel", wraplength=720, justify="left").pack(anchor="w")
 
         self.action_buttons = [self.btn_flash, self.btn_enable, self.btn_disable, self.btn_fix]
 
@@ -205,15 +225,36 @@ class App:
         self.out.pack(fill="both", expand=True)
         self.out.configure(state="disabled")
 
-        self.status = tk.Label(self.root, text="Ready.", anchor="w", bg="#e5e7eb",
+        self.status = self._label(tk.Label, self.root, "Ready.", anchor="w", bg="#e5e7eb",
                                fg="#374151", font=("Segoe UI", 9), padx=10, pady=4)
         self.status.pack(fill="x")
 
     # --- helpers ----------------------------------------------------------
 
-    def _append(self, text):
+    def _label(self, widget_type, parent, source, **kwargs):
+        widget = widget_type(parent, text=self.i18n.t(source), **kwargs)
+        self._labels.append((widget, source))
+        return widget
+
+    def _change_language(self, _event=None):
+        tag = next(tag for tag, data in self.i18n.catalogs.items()
+                   if data['name'] == self.language.get())
+        self.i18n.select(tag)
+        for widget, source in self._labels:
+            widget.configure(text=self.i18n.t(source))
+        self.status.configure(text=self.i18n.t("Working…" if self._is_busy else "Ready."))
+        # Re-render from raw history; switching languages does not lose diagnostic data.
         self.out.configure(state="normal")
-        self.out.insert("end", text)
+        self.out.delete("1.0", "end")
+        for text in self._history:
+            self.out.insert("end", self.i18n.log(text))
+        self.out.see("end")
+        self.out.configure(state="disabled")
+
+    def _append(self, text):
+        self._history.append(text)
+        self.out.configure(state="normal")
+        self.out.insert("end", self.i18n.log(text))
         self.out.see("end")
         self.out.configure(state="disabled")
 
@@ -246,11 +287,12 @@ class App:
         self.root.after(100, self._drain)
 
     def _busy(self, on):
+        self._is_busy = on
         state = "disabled" if on else "normal"
         for b in self.action_buttons:
             b.configure(state=state)
         self.detect_btn.configure(state=state)
-        self.status.configure(text="Working…" if on else "Ready.")
+        self.status.configure(text=self.i18n.t("Working…" if on else "Ready."))
 
     def _common_args(self):
         args = ["--yes"]
@@ -281,6 +323,7 @@ class App:
             except Exception as e:  # noqa: BLE001 - surface everything to the log
                 self.q.put("\nERROR: %s\n" % e)
             finally:
+                sys.stdout.flush()
                 sys.stdout, sys.stderr = saved_out, saved_err
                 self.q.put("\n[%s finished, exit %s]\n" % (label, rc))
                 self.root.after(0, lambda: self._busy(False))
@@ -302,14 +345,14 @@ class App:
 
     def do_flash(self):
         if not self.vin.get().strip():
-            messagebox.showerror("VIN required",
-                                 "Flashing writes the VIN to the unit, so it is required.\n"
-                                 "Enter it or click Detect VIN first.")
+            messagebox.showerror(self.i18n.t("VIN required"),
+                                 self.i18n.t("Flashing writes the VIN to the unit, so it is required.\n"
+                                 "Enter it or click Detect VIN first."))
             return
         if not messagebox.askyesno(
-            "Flash the debug image?",
-            "This puts the head unit into programming mode and reboots it.\n\n"
-            "VIN %s will be written to the unit.\n\nContinue?" % self.vin.get().strip()):
+            self.i18n.t("Flash the debug image?"),
+            self.i18n.t("This puts the head unit into programming mode and reboots it.\n\n"
+            "VIN %s will be written to the unit.\n\nContinue?") % self.vin.get().strip()):
             return
         self._run(["flash"] + self._persist_args() + self._common_args(), "flash")
 
@@ -333,8 +376,8 @@ class App:
         self._run(["fix-key"] + self._persist_args() + self._common_args(), "fix-key")
 
     def do_disable(self):
-        if not messagebox.askyesno("Disable SSH?",
-                                   "Revert SSH to stock and stop debug mode on the head unit?"):
+        if not messagebox.askyesno(self.i18n.t("Disable SSH?"),
+                                   self.i18n.t("Revert SSH to stock and stop debug mode on the head unit?")):
             return
         self._run(["disable"] + self._common_args(), "disable")
 

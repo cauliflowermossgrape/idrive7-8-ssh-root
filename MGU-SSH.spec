@@ -10,7 +10,7 @@ hiddenimports = []
 for pkg in ("cryptography", "cffi"):
     hiddenimports += collect_submodules(pkg)
 
-datas = []
+datas = [("locales", "locales")]
 for pkg in ("cryptography",):
     datas += collect_data_files(pkg)
 

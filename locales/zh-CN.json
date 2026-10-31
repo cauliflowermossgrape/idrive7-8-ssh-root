@@ -1,0 +1,318 @@
+{
+  "name": "简体中文",
+  "strings": {
+    "BMW ID7 / ID8  •  root over ENET": "BMW ID7 / ID8  •  通过 ENET 开启 root SSH",
+    "VIN": "VIN",
+    "Detect VIN": "读取 VIN",
+    "(auto-reads the VIN from the car)": "（通过 ENET 自动读取车辆 VIN）",
+    "CONNECTION (optional)": "连接设置（可选）",
+    "Gateway": "网关",
+    "Variant": "架构",
+    "MGU IP": "MGU IP",
+    "Flash + Enable": "刷写并启用",
+    "Enable": "启用 SSH",
+    "Disable": "停用 SSH",
+    "Turn debug mode off after enabling (clears the B7F8E5 DTC)": "启用后关闭调试模式（清除 B7F8E5 故障码）",
+    "On = SSH stays up with debug off (recommended).  Off = SSH persistent but debug mode stays on.": "勾选：关闭调试模式并保持 SSH 可用（推荐）。不勾选：SSH 保持可用，调试模式也保持开启。",
+    "Give this car its own unique SSH key  (advanced - NOT recommended)": "为此车辆使用独立 SSH 密钥（高级选项，不推荐）",
+    "Swaps the shared dev key for a per-car key. Can only be done ONCE - if you lose the key or reflash, you can't create a new identity. Leave off unless you know why you need it.": "将共享开发密钥替换为车辆独立密钥。只能执行一次；丢失密钥或重新刷写后，可能无法创建新身份。除非明确了解用途，否则请勿勾选。",
+    "Ready.": "就绪。",
+    "Working…": "正在处理…",
+    "VIN required": "需要 VIN",
+    "Flashing writes the VIN to the unit, so it is required.\nEnter it or click Detect VIN first.": "刷写会将 VIN 写入主机，因此必须提供 VIN。\n请先输入 VIN 或点击“读取 VIN”。",
+    "Flash the debug image?": "确认刷写调试镜像？",
+    "This puts the head unit into programming mode and reboots it.\n\nVIN %s will be written to the unit.\n\nContinue?": "此操作会让主机进入编程模式并重新启动。\n\n将向主机写入 VIN：%s。\n\n是否继续？",
+    "Disable SSH?": "确认停用 SSH？",
+    "Revert SSH to stock and stop debug mode on the head unit?": "是否恢复原厂 SSH 行为，并停止主机调试模式？",
+    "Scanning for an ENET gateway (UDP 6811)…": "正在搜索 ENET 网关（UDP 6811）…",
+    "No ENET gateway responded. Check the cable/adapter and that the car is awake.": "没有 ENET 网关响应。请检查线缆、网卡，并确认车辆保持唤醒。",
+    "not reported": "未报告",
+    "MGU-SSH failed to start": "MGU-SSH 启动失败",
+    "Scanning active adapters for an ENET gateway (UDP 6811 broadcast)...": "正在扫描可用网卡并搜索 ENET 网关（UDP 6811 广播）…",
+    "Found 1 ENET gateway.": "找到 1 个 ENET 网关。",
+    "Checking debug/SSH state...": "正在检查调试/SSH 状态…",
+    "No MGU IP known; pass --mgu-ip to probe port 22.": "尚未获取 MGU IP；可用 --mgu-ip 指定地址并检测 22 端口。",
+    "Stopping the MGU SSH service (31 02 A0 FD)...": "正在停止 MGU SSH 服务（31 02 A0 FD）…",
+    "Note: after closing, the SSH state clears on the next service cycle; the port probe is best re-run with 'status'.": "提示：关闭后的 SSH 状态会在下一个服务周期清除；建议稍后重新运行 status 检测端口。",
+    "Proven SSH service channel established.": "已确认建立 SSH 服务连接。",
+    "Verifying with the MGU-restart wake sequence...": "正在通过 MGU 重启唤醒流程验证…",
+    "Port 22 did not come up after the restart; re-run 'status' after the MGU finishes its service cycle.": "重启后 22 端口尚未开放；请等待 MGU 完成服务周期后重新运行 status。",
+    "Port 22 is open - waiting 10 s for the SSH daemon to finish starting...": "22 端口已开放，等待 10 秒让 SSH 服务完成启动…",
+    "sshd-always-on.sh not found next to ssh_enable.py; cannot change SSH persistence.": "ssh_enable.py 旁未找到 sshd-always-on.sh，无法修改 SSH 持久化设置。",
+    "Admin confirmed: root on the head unit.": "已确认拥有主机 root 权限。",
+    "No MGU IP known; pass --mgu-ip. Debug mode left unchanged.": "尚未获取 MGU IP；请用 --mgu-ip 指定地址。调试模式未改变。",
+    "Port 22 is not open; bringing SSH up first...": "22 端口未开放，正在先启用 SSH…",
+    "SSH did not come up; run \"enable\" first. Debug mode left unchanged.": "SSH 未能启动，请先运行 enable。调试模式未改变。",
+    "SSH persistence failed; leaving debug mode ON so you do not lose access.": "SSH 持久化失败；为避免失去访问权限，将保持调试模式开启。",
+    "Disabling debug mode (31 02 A0 FD) so the B7F8E5 DTC clears...": "正在关闭调试模式（31 02 A0 FD）以清除 B7F8E5 故障码…",
+    "DONE: SSH runs with debug mode OFF - no more B7F8E5 error.": "完成：SSH 在调试模式关闭时仍可运行，不再产生 B7F8E5 调试故障。",
+    "Persist finished but verification was inconclusive; re-check with \"status\".": "持久化流程已结束，但验证结果不确定；请用 status 重新检查。",
+    "Reverting SSH persistence (back to stock debug-only)...": "正在撤销 SSH 持久化，恢复仅在调试模式下可用的原厂行为…",
+    "SSH not reachable to revert persistence; stopping debug mode anyway.": "无法通过 SSH 撤销持久化；仍将尝试停止调试模式。",
+    "Stopping the MGU debug/SSH service (31 02 A0 FD)...": "正在停止 MGU 调试/SSH 服务（31 02 A0 FD）…",
+    "Refusing to install a malformed public key.": "拒绝安装格式错误的公钥。",
+    "Generating a unique SSH key for this car and installing it over SSH...": "正在为此车辆生成独立 SSH 密钥并通过 SSH 安装…",
+    "Unique-key install failed; keeping the shared dev key for login.": "独立密钥安装失败；保留共享开发密钥用于登录。",
+    "This car now has its own unique SSH key:": "此车辆的独立 SSH 密钥如下：",
+    "Verified: the unit accepts this car's unique key.": "验证通过：主机接受此车辆的独立密钥。",
+    "Shared dev key removed - this car now accepts ONLY its own unique key.": "已移除共享开发密钥；此车辆现在仅接受自己的独立密钥。",
+    "Enable mode: enroll-only (no flashing).": "启用模式：仅注册身份，不进行刷写。",
+    "Port 22 is already open; enrolling anyway to refresh the identity.": "22 端口已开放；仍执行注册以刷新身份。",
+    "Enrolling this unit (A6 71 challenge -> certificate -> A0 FD install)...": "正在注册此主机（A6 71 质询 → 证书 → A0 FD 安装）…",
+    "The saved per-car key did not log in; falling back to the baked key.": "保存的车辆密钥无法登录；正在回退到镜像内置密钥。",
+    "--persist: making SSH survive debug mode being off...": "--persist：正在设置关闭调试模式后仍保持 SSH 可用…",
+    "Warning: SVK gate no longer passes after flash.": "警告：刷写后未通过 SVK 校验。",
+    "Root SSH key (in all formats) and connect.txt written:": "已保存各格式的 root SSH 密钥及 connect.txt：",
+    "Interrupted.": "操作已中断。",
+    "MGU iDrive  SSH": "MGU iDrive  SSH",
+    "OpenSSH client (ssh) not found on PATH; cannot verify the login. Install the Windows OpenSSH client or add ssh to PATH.": "PATH 中未找到 OpenSSH 客户端（ssh），无法验证登录。请安装 Windows OpenSSH 客户端，或将 ssh 加入 PATH。",
+    "No per-car key found for this unit; run \"enable\" (or \"flash\") first. Debug mode left unchanged.": "未找到此主机的车辆密钥；请先运行 enable（或 flash）。调试模式未改变。",
+    "SSH is now persistent. Leaving debug mode ON (--keep-debug); the B7F8E5 DTC stays until you disable debug.": "SSH 已持久化。按 --keep-debug 要求保持调试模式开启；B7F8E5 故障码将在关闭调试模式后消失。",
+    "DONE: debug/SSH stopped. Persistence (if any) is reverted; SSH is debug-only again from the next boot.": "完成：调试/SSH 已停止。已撤销持久化（如存在）；下次启动起，SSH 恢复为仅在调试模式下可用。",
+    "Installed the unique key but could not verify login with it; leaving the shared dev key in place so you keep access.": "独立密钥已安装，但无法验证其登录；保留共享开发密钥以维持访问权限。",
+    "Could not remove the shared dev key (it may be in a read-only image); this car's unique key works, and the dev key still works as a fallback.": "无法移除共享开发密钥（可能位于只读镜像中）；车辆独立密钥可以使用，开发密钥也仍可用于回退登录。",
+    "NOTE: if the new key does not connect yet, force-restart the head unit - press and HOLD the volume/power knob ~20-30 s until it reboots - so it comes back up loaded with the new key.": "提示：如果新密钥仍无法连接，请按住音量/电源旋钮约 20–30 秒，直到主机重启，让它重新加载新密钥。",
+    "MGU SSH enrollment: A0 FD install accepted": "MGU SSH 注册：A0 FD 安装已接受",
+    "MGU SSH enrollment: 172A readback accepted": "MGU SSH 注册：172A 回读已接受"
+  },
+  "logs": [
+    {
+      "source": "Discovery failed: {0}",
+      "translation": "搜索失败：{0}"
+    },
+    {
+      "source": "Found gateway {0} | VIN: {1}",
+      "translation": "找到网关 {0} | VIN：{1}"
+    },
+    {
+      "source": "({0} gateways responded; using the first)",
+      "translation": "（收到 {0} 个网关响应，使用第一个）"
+    },
+    {
+      "source": "[{0} finished, exit {1}]",
+      "translation": "[{0} 已结束，退出码 {1}]"
+    },
+    {
+      "source": "ERROR: {0}",
+      "translation": "错误：{0}"
+    },
+    {
+      "source": "FAILED: {0}",
+      "translation": "失败：{0}"
+    },
+    {
+      "source": "ENET discovery broadcast -> {0}:{1}",
+      "translation": "ENET 搜索广播 → {0}:{1}"
+    },
+    {
+      "source": "Found {0} ENET gateways:",
+      "translation": "找到 {0} 个 ENET 网关："
+    },
+    {
+      "source": "Connecting to ENET gateway {0}",
+      "translation": "正在连接 ENET 网关 {0}"
+    },
+    {
+      "source": "SVK was not decoded: {0}",
+      "translation": "无法解析 SVK：{0}"
+    },
+    {
+      "source": "MGU IP: {0} | netmask: {1}",
+      "translation": "MGU IP：{0} | 子网掩码：{1}"
+    },
+    {
+      "source": "MGU IP was not decoded: {0}",
+      "translation": "无法解析 MGU IP：{0}"
+    },
+    {
+      "source": "MGU IP override: {0}",
+      "translation": "手动指定 MGU IP：{0}"
+    },
+    {
+      "source": "MGU SSH port {0} is open ({1} ms).",
+      "translation": "MGU SSH {0} 端口已开放（{1} 毫秒）。"
+    },
+    {
+      "source": "MGU SSH port {0} is not open ({1} ms).",
+      "translation": "MGU SSH {0} 端口未开放（{1} 毫秒）。"
+    },
+    {
+      "source": "probe retry {0}/{1}...",
+      "translation": "端口探测重试 {0}/{1}…"
+    },
+    {
+      "source": "DTC B7F8E5 (Debugging active / SSH is active!!!): {0}",
+      "translation": "DTC B7F8E5（调试/SSH 已激活）：{0}"
+    },
+    {
+      "source": "DTC B7F8E5 (debug/SSH active): {0}",
+      "translation": "DTC B7F8E5（调试/SSH 已激活）：{0}"
+    },
+    {
+      "source": "Status: debug/SSH-open state is {0}",
+      "translation": "调试/SSH 开启状态：{0}"
+    },
+    {
+      "source": "Close routine result: {0}",
+      "translation": "关闭例程结果：{0}"
+    },
+    {
+      "source": "Initial SSH connection unavailable at {0}:22 - restarting MGU (11 01) and waiting 15 seconds.",
+      "translation": "无法连接 {0}:22；正在重启 MGU（11 01）并等待 15 秒。"
+    },
+    {
+      "source": "MGU restart request did not complete cleanly: {0}",
+      "translation": "MGU 重启请求未正常完成：{0}"
+    },
+    {
+      "source": "diag not back yet after restart ({0})",
+      "translation": "重启后诊断服务尚未恢复（{0}）"
+    },
+    {
+      "source": "Verifying SSH login as root with the recovered identity{0}...",
+      "translation": "正在使用恢复的身份验证 root SSH 登录{0}…"
+    },
+    {
+      "source": "SSH OK as root: {0}",
+      "translation": "root SSH 登录成功：{0}"
+    },
+    {
+      "source": "SSH not answering yet ({0}) - retrying in 8 s...",
+      "translation": "SSH 尚未响应（{0}），8 秒后重试…"
+    },
+    {
+      "source": "SSH verification failed: {0}",
+      "translation": "SSH 验证失败：{0}"
+    },
+    {
+      "source": "No saved key found in {0}",
+      "translation": "在 {0} 中没有找到已保存的密钥"
+    },
+    {
+      "source": "SSH connection failed: {0}",
+      "translation": "SSH 连接失败：{0}"
+    },
+    {
+      "source": "The SSH session is not root (id -u={0}); aborting.",
+      "translation": "SSH 会话不是 root（id -u={0}），已中止。"
+    },
+    {
+      "source": "Uploading sshd-always-on.sh and running: sh {0} {1}",
+      "translation": "正在上传 sshd-always-on.sh 并运行：sh {0} {1}"
+    },
+    {
+      "source": "The {0} step returned exit code {1}.",
+      "translation": "{0} 步骤返回退出码 {1}。"
+    },
+    {
+      "source": "sshd persistence {0} succeeded.",
+      "translation": "sshd 持久化操作 {0} 成功。"
+    },
+    {
+      "source": "The debug-stop routine was rejected ({0}); SSH is persistent but debug mode is still on.",
+      "translation": "停止调试例程被拒绝（{0}）；SSH 已持久化，但调试模式仍然开启。"
+    },
+    {
+      "source": "After disabling debug mode: port 22 {0}; debug DTC B7F8E5 {1}.",
+      "translation": "关闭调试模式后：22 端口 {0}；调试故障 B7F8E5 {1}。"
+    },
+    {
+      "source": "The debug-stop routine was rejected: {0}",
+      "translation": "停止调试例程被拒绝：{0}"
+    },
+    {
+      "source": "Per-car key added to {0} on the unit.",
+      "translation": "已将车辆独立密钥添加到主机的 {0}。"
+    },
+    {
+      "source": "SSH connection failed while removing the dev key: {0}",
+      "translation": "移除开发密钥时 SSH 连接失败：{0}"
+    },
+    {
+      "source": "Could not find the bootstrap key ({0}); skipping unique-key step.",
+      "translation": "找不到引导密钥（{0}），跳过独立密钥步骤。"
+    },
+    {
+      "source": "DONE: MGU SSH enabled - connect with root + {0}.",
+      "translation": "完成：MGU SSH 已启用，请使用 root 和密钥 {0} 连接。"
+    },
+    {
+      "source": "Flash mode: writing the {0} debug image.",
+      "translation": "刷写模式：正在写入 {0} 调试镜像。"
+    },
+    {
+      "source": "DONE: MGU flashed + SSH enabled - connect with root + {0}.",
+      "translation": "完成：MGU 刷写及 SSH 启用成功，请使用 root 和密钥 {0} 连接。"
+    },
+    {
+      "source": "Flash contract: {0} - frames: {1} | transfer parts: {2} | TransferData bytes: {3}",
+      "translation": "刷写任务：{0} - 帧数：{1} | 传输分段：{2} | TransferData 字节数：{3}"
+    },
+    {
+      "source": "Waiting for the MGU to finish restarting before enrolling ({0} s)...",
+      "translation": "等待 MGU 完成重启后再注册（{0} 秒）…"
+    },
+    {
+      "source": "Challenge identity: {0}",
+      "translation": "质询身份：{0}"
+    },
+    {
+      "source": "Generated certificate: {0} bytes DER / {1} bytes PEM",
+      "translation": "已生成证书：DER {0} 字节 / PEM {1} 字节"
+    },
+    {
+      "source": "Enroll cycle {0}/5: certificate installed, 172A readback accepted.",
+      "translation": "注册周期 {0}/5：证书已安装，172A 回读已接受。"
+    },
+    {
+      "source": "Using the saved per-car key for this unit ({0}).",
+      "translation": "正在使用此主机已保存的车辆独立密钥（{0}）。"
+    },
+    {
+      "source": "Saved the previous key ({0}) to {1} before refreshing.",
+      "translation": "刷新前已将原密钥（{0}）备份到 {1}。"
+    },
+    {
+      "source": "Connection info (MGU IP + ssh command) saved to {0}",
+      "translation": "连接信息（MGU IP 和 ssh 命令）已保存到 {0}"
+    },
+    {
+      "source": "Connect with: ssh -i \"{0}\" root@{1}",
+      "translation": "连接命令：ssh -i \"{0}\" root@{1}"
+    },
+    {
+      "source": "Could not write connect.txt: {0}",
+      "translation": "无法写入 connect.txt：{0}"
+    },
+    {
+      "source": "MGU SSH enrollment: challenge {0}",
+      "translation": "MGU SSH 注册：质询 {0}"
+    },
+    {
+      "source": "MGU SSH enrollment: certificate {0} bytes DER",
+      "translation": "MGU SSH 注册：DER 证书 {0} 字节"
+    },
+    {
+      "source": "WARNING: discovered VIN {0} differs from --vin {1} - double-check the VIN before flashing.",
+      "translation": "警告：读取到的 VIN {0} 与 --vin 指定的 {1} 不同；刷写前请再次核对 VIN。"
+    },
+    {
+      "source": "Could not confirm the key was written{0}.",
+      "translation": "无法确认密钥是否已写入{0}。"
+    }
+  ],
+  "log_values": {
+    "PRESENT": "存在",
+    "absent": "不存在",
+    "ON": "开启",
+    "OFF": "关闭",
+    "OFF (or not reported)": "关闭（或未报告）",
+    "is STILL OPEN": "仍然开放",
+    "is CLOSED - persistence may not have taken": "已关闭，持久化可能未生效",
+    "cleared": "已清除",
+    "STILL PRESENT": "仍然存在",
+    "unknown (not reported)": "未知（未报告）",
+    "install": "安装",
+    "removal": "移除"
+  }
+}
