@@ -33,6 +33,37 @@ Optionally (advanced, off by default) it can give a car its own **unique SSH key
 pip install -r requirements.txt     # one dependency: cryptography
 ```
 
+## ⚠️ Back up your coding before flashing ⚠️ 
+
+**`flash` reprograms the head unit and can wipe its coding / CAFD definitions.**
+You will lose your saved settings.
+Before the first `flash` on a car, make a full backup of the head unit's coding
+so you can put it back afterwards. This happened on a real car during
+development, and restoring from a backup fixed it.
+
+1. **Before flashing** - read and save the head unit's coding with a coding
+   tool. [BimmerCode](https://bimmercode.app/) worked here: connect, select the
+   head unit (HU / MGU), and export/save its coding (BimmerCode keeps a backup
+   of each module it writes; some tools also let you "read FA/coding" and save
+   it). BMW dealer tools (ISTA/E-Sys) can also save a full backup.
+2. **Flash + enable SSH** with this tool and grab the SSH key it saves for you.
+3. **After flashing** - if any functions misbehave or coding looks reset,
+   restore the saved coding for the head unit with the same tool. In BimmerCode
+   this is its restore/undo of the module you backed up.
+
+Only the flashing commands (`flash`, `fix-key`) carry this risk - `enable`,
+`persist`, `close`, `disable` and `status` do not reprogram the unit.
+
+### BMW Digital Key (issue #13)
+
+**Yes - flashing deletes the car's Digital Key pairings.** Reported on a real
+car ([issue #13](https://github.com/cauliflowermossgrape/idrive7-8-ssh-root/issues/13),
+G26 2023, iPhone): after the flash the phone's digital key was gone and had
+to be **set up again as new**. The coding backup above does not cover the
+digital keys, so plan on re-pairing every key after any flash (`flash` and
+`fix-key` alike). If flashing loses something else on your car, please open an
+issue so it can be documented here.
+
 ## Quick start - the GUI (recommended)
 
 ```
@@ -103,37 +134,6 @@ the unit did with the region.
 > `REMOTE HOST IDENTIFICATION HAS CHANGED` / `Offending ED25519 key in nul`? That
 > was a separate known-hosts bug (the login was aborted before the key was even
 > offered) and is already fixed - make sure you are on the current build.
-
-## ⚠️ Back up your coding before flashing ⚠️ 
-
-**`flash` reprograms the head unit and can wipe its coding / CAFD definitions.**
-You will lose your saved settings.
-Before the first `flash` on a car, make a full backup of the head unit's coding
-so you can put it back afterwards. This happened on a real car during
-development, and restoring from a backup fixed it.
-
-1. **Before flashing** - read and save the head unit's coding with a coding
-   tool. [BimmerCode](https://bimmercode.app/) worked here: connect, select the
-   head unit (HU / MGU), and export/save its coding (BimmerCode keeps a backup
-   of each module it writes; some tools also let you "read FA/coding" and save
-   it). BMW dealer tools (ISTA/E-Sys) can also save a full backup.
-2. **Flash + enable SSH** with this tool and grab the SSH key it saves for you.
-3. **After flashing** - if any functions misbehave or coding looks reset,
-   restore the saved coding for the head unit with the same tool. In BimmerCode
-   this is its restore/undo of the module you backed up.
-
-Only `flash` carries this risk - `enable`, `persist`, `close`, `disable` and
-`status` do not reprogram the unit.
-
-### BMW Digital Key (issue #13)
-
-**Yes - flashing deletes the car's Digital Key pairings.** Reported on a real
-car ([issue #13](https://github.com/cauliflowermossgrape/idrive7-8-ssh-root/issues/13),
-G26 2023, iPhone): after the flash the phone's digital key was gone and had
-to be **set up again as new**. The coding backup above does not cover the
-digital keys, so plan on re-pairing every key after any flash (`flash` and
-`fix-key` alike). If flashing loses something else on your car, please open an
-issue so it can be documented here.
 
 ## What it does
 
