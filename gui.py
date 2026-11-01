@@ -132,6 +132,23 @@ class App:
         button("Green.TButton", GREEN, "#17824a")
         button("Red.TButton", RED, "#a93030")
         button("Amber.TButton", AMBER, "#b46a1f")
+
+        # Hero: the one button most people ever need - big and unmissable.
+        st.configure("Hero.TButton", background=ACCENT, foreground="#ffffff",
+                     font=("Segoe UI", 16, "bold"), padding=(16, 22),
+                     borderwidth=0, focuscolor=ACCENT)
+        st.map("Hero.TButton", background=[("active", "#1a5fd0"), ("disabled", "#9aa4b2")])
+
+        # Smaller secondary buttons that sit under the hero.
+        def small_button(name, bg, active):
+            st.configure(name, background=bg, foreground="#ffffff",
+                         font=("Segoe UI", 10, "bold"), padding=(8, 7),
+                         borderwidth=0, focuscolor=bg)
+            st.map(name, background=[("active", active), ("disabled", "#9aa4b2")])
+
+        small_button("GreenS.TButton", GREEN, "#17824a")
+        small_button("RedS.TButton", RED, "#a93030")
+        small_button("AmberS.TButton", AMBER, "#b46a1f")
         st.configure("Detect.TButton", background=HEADER, foreground="#ffffff",
                      font=("Segoe UI", 9, "bold"), padding=(10, 6), borderwidth=0)
         st.map("Detect.TButton", background=[("active", "#1d4273"), ("disabled", "#9aa4b2")])
@@ -176,26 +193,31 @@ class App:
         self._label(ttk.Label, adv, "MGU IP").grid(row=0, column=4, sticky="w", padx=(16, 6))
         ttk.Entry(adv, textvariable=self.mgu_ip, width=16).grid(row=0, column=5, sticky="w")
 
-        # the three actions
-        actions = ttk.Frame(body)
-        actions.pack(fill="x", pady=(16, 0))
-        actions.columnconfigure((0, 1, 2), weight=1, uniform="a")
-        self.btn_flash = self._label(ttk.Button, actions, "Flash + Enable", style="Primary.TButton", command=self.do_flash)
-        self.btn_enable = self._label(ttk.Button, actions, "Enable", style="Green.TButton", command=self.do_enable)
-        self.btn_disable = self._label(ttk.Button, actions, "Disable", style="Red.TButton", command=self.do_disable)
-        self.btn_flash.grid(row=0, column=0, sticky="ew", padx=(0, 6))
-        self.btn_enable.grid(row=0, column=1, sticky="ew", padx=6)
-        self.btn_disable.grid(row=0, column=2, sticky="ew", padx=(6, 0))
+        # Primary one-click action - this is all most people ever need.
+        hero = ttk.Frame(body)
+        hero.pack(fill="x", pady=(16, 0))
+        self.btn_flash = self._label(ttk.Button, hero, "Flash + Enable", style="Hero.TButton", command=self.do_flash)
+        self.btn_flash.pack(fill="x")
+        self._label(ttk.Label, hero,
+                  "Start here - this is all you need. It flashes the debug image and turns on root SSH in one step.\n"
+                  "If the car connects afterwards but refuses the key, then use “Fix refusing SSH key” below.",
+                  style="Hint.TLabel", justify="left", wraplength=1100).pack(anchor="w", pady=(4, 0))
 
-        # repair action (issue #2): re-flash carrying our root key in the one
-        # unsigned region, for units that enroll + open port 22 but still refuse
-        # login because their stock authorized_keys.root holds a different key.
-        fix = ttk.Frame(body)
-        fix.pack(fill="x", pady=(8, 0))
-        self.btn_fix = ttk.Button(fix, text="Fix refusing SSH key", style="Amber.TButton", command=self.do_fix_key)
-        self.btn_fix.pack(fill="x")
-        ttk.Label(fix, text="Login refused after a successful flash? Re-flashes with our key in the unsigned region (writes the VIN; reboots the unit).",
-                  style="Hint.TLabel").pack(anchor="w", pady=(2, 0))
+        # Secondary actions (smaller), only needed in specific cases.
+        actions = ttk.Frame(body)
+        actions.pack(fill="x", pady=(12, 0))
+        actions.columnconfigure((0, 1, 2), weight=1, uniform="a")
+        self.btn_enable = self._label(ttk.Button, actions, "Enable", style="GreenS.TButton", command=self.do_enable)
+        self.btn_fix = self._label(ttk.Button, actions, "Fix refusing SSH key", style="AmberS.TButton", command=self.do_fix_key)
+        self.btn_disable = self._label(ttk.Button, actions, "Disable", style="RedS.TButton", command=self.do_disable)
+        self.btn_enable.grid(row=0, column=0, sticky="ew", padx=(0, 6))
+        self.btn_fix.grid(row=0, column=1, sticky="ew", padx=6)
+        self.btn_disable.grid(row=0, column=2, sticky="ew", padx=(6, 0))
+        self._label(ttk.Label, actions,
+                  "Enable: re-open SSH on an already-flashed unit (no flashing).      "
+                  "Fix refusing SSH key: login refused after a good flash.      "
+                  "Disable: undo persistence and stop SSH.",
+                  style="Hint.TLabel", justify="left", wraplength=1100).grid(row=1, column=0, columnspan=3, sticky="w", pady=(4, 0))
 
         opt = ttk.Frame(body)
         opt.pack(fill="x", pady=(10, 0))
