@@ -35,7 +35,7 @@ pip install -r requirements.txt     # one dependency: cryptography
 
 ## ⚠️ Back up your coding before flashing ⚠️ 
 
-**`flash` reprograms the head unit and can wipe its coding / CAFD definitions.**
+**`flash` reprograms the head unit and will wipe its coding / CAFD definitions.**
 You will lose your saved settings.
 Before the first `flash` on a car, make a full backup of the head unit's coding
 so you can put it back afterwards. This happened on a real car during
