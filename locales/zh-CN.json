@@ -73,7 +73,10 @@
     "Could not remove the shared dev key (it may be in a read-only image); this car's unique key works, and the dev key still works as a fallback.": "无法移除共享开发密钥（可能位于只读镜像中）；车辆独立密钥可以使用，开发密钥也仍可用于回退登录。",
     "NOTE: if the new key does not connect yet, force-restart the head unit - press and HOLD the volume/power knob ~20-30 s until it reboots - so it comes back up loaded with the new key.": "提示：如果新密钥仍无法连接，请按住音量/电源旋钮约 20–30 秒，直到主机重启，让它重新加载新密钥。",
     "MGU SSH enrollment: A0 FD install accepted": "MGU SSH 注册：A0 FD 安装已接受",
-    "MGU SSH enrollment: 172A readback accepted": "MGU SSH 注册：172A 回读已接受"
+    "MGU SSH enrollment: 172A readback accepted": "MGU SSH 注册：172A 回读已接受",
+    "Start here - this is all you need. It flashes the debug image and turns on root SSH in one step.\nIf the car connects afterwards but refuses the key, then use “Fix refusing SSH key” below.": "从这里开始——你只需点这一个按钮。它会刷入调试镜像并一步开启 root SSH。\n如果随后车辆能连接但拒绝密钥，再使用下方的“修复被拒绝的 SSH 密钥”。",
+    "Fix refusing SSH key": "修复被拒绝的 SSH 密钥",
+    "Enable: re-open SSH on an already-flashed unit (no flashing).      Fix refusing SSH key: login refused after a good flash.      Disable: undo persistence and stop SSH.": "启用 SSH：在已刷写的单元上重新开启 SSH（不刷写）。      修复被拒绝的 SSH 密钥：成功刷写后登录被拒。      停用 SSH：撤销持久化并停止 SSH。"
   },
   "logs": [
     {
