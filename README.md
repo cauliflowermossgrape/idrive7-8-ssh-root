@@ -70,8 +70,10 @@ issue so it can be documented here.
 python gui.py
 ```
 
-*Please use only etheret to enet wired cable*
+**Please use only etheret to enet wired cable**
+
 wifi adapters cant transmit ssh
+
 The window (above) has a VIN field + **Detect VIN** (auto-reads it from the car
 over ENET) and these buttons:
 
