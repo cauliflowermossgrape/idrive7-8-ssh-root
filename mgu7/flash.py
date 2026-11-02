@@ -3,11 +3,26 @@ import re
 import socket
 import struct
 import time
-from .hsfz import EnetClient, HsfzError, Response, UdsReject, X, GATEWAY, MGU, TESTER, P_ADVANCED, P_SVK, P_READ_IP
+from .hsfz import EnetClient, HsfzError, Response, UdsReject, X, GATEWAY, MGU, TESTER, TYPE_DIAG, P_ADVANCED, P_SVK, P_READ_IP
 SLEEP_TESTER_PRESENT_MS = 1050
 SLEEP_HARD_RESET_MS = 3500
 RESPONSE_TIMEOUT_MS = 15000
 STOP_LIMIT_36_24 = 10
+# After an ECU reset, a slower-booting MGU (iDrive8 / BCP) can stay off the bus
+# for much longer than the fixed reset pause. While it is gone the gateway answers
+# with a non-diagnostic HSFZ frame (e.g. type 0x0043, empty payload) meaning it
+# could NOT deliver the request to the ECU. Because the request never reached the
+# unit it is safe to wait and resend the SAME frame. Poll up to this budget before
+# giving up (see issue #18).
+RESET_REACHABLE_WAIT_MS = 60000
+RESET_REACHABLE_POLL_MS = 2000
+
+
+def _is_unreachable(resp):
+    """True when the gateway returned a frame but it is NOT a diagnostic response -
+    i.e. a transport-level 'target ECU not reachable' (e.g. HSFZ type 0x0043). A
+    timeout (no frame at all) is NOT this case; it is handled separately."""
+    return (not resp.timeout) and resp.frame is not None and resp.type != TYPE_DIAG
 ID7 = 'id7'
 ID8_BDC3 = 'id8-bdc3'
 ID8_BCP = 'id8-bcp'
@@ -415,13 +430,15 @@ def patch_region_file(data, path, filedata):
 
 class FlashEngine:
 
-    def __init__(self, client, operands, gate=None, response_timeout_ms=RESPONSE_TIMEOUT_MS, tester_present_ms=SLEEP_TESTER_PRESENT_MS, hard_reset_ms=SLEEP_HARD_RESET_MS):
+    def __init__(self, client, operands, gate=None, response_timeout_ms=RESPONSE_TIMEOUT_MS, tester_present_ms=SLEEP_TESTER_PRESENT_MS, hard_reset_ms=SLEEP_HARD_RESET_MS, reachable_wait_ms=RESET_REACHABLE_WAIT_MS, reachable_poll_ms=RESET_REACHABLE_POLL_MS):
         self.client = client
         self.operands = operands
         self.gate = gate
         self.response_timeout_ms = response_timeout_ms
         self.tester_present_ms = tester_present_ms
         self.hard_reset_ms = hard_reset_ms
+        self.reachable_wait_ms = reachable_wait_ms
+        self.reachable_poll_ms = reachable_poll_ms
 
     @staticmethod
     def _validated(data):
@@ -578,12 +595,36 @@ class FlashEngine:
                 time.sleep(self.tester_present_ms / 1000.0)
                 progress(human, count, percent, part, p.kind, 'Sent with suppressed positive response; the required pause completed.')
                 continue
-            if self._is_df_tail_routine(data, i):
-                v2 = self.client.await_routine(t.payload)
-            elif not self._is_final_reset(data, i):
-                v2 = self.client.await_one(t.dst, t.payload, self.response_timeout_ms)
-            else:
-                v2 = self.client.await_reset(t.dst, t.payload, self.response_timeout_ms)
+            def send_frame_once():
+                if self._is_df_tail_routine(data, i):
+                    return self.client.await_routine(t.payload)
+                if not self._is_final_reset(data, i):
+                    return self.client.await_one(t.dst, t.payload, self.response_timeout_ms)
+                return self.client.await_reset(t.dst, t.payload, self.response_timeout_ms)
+
+            v2 = send_frame_once()
+            # The gateway says the MGU is not reachable (non-diagnostic HSFZ frame,
+            # e.g. type 0x0043) - usually it is still rebooting after the ECU reset.
+            # The request was NOT delivered, so wait and resend the SAME frame until
+            # the unit is back, rather than skipping the post-reset re-init frames,
+            # which previously stranded iDrive8/BCP units in programming mode (#18).
+            if _is_unreachable(v2):
+                deadline = time.monotonic() + self.reachable_wait_ms / 1000.0
+                tries = 0
+                while _is_unreachable(v2) and time.monotonic() < deadline:
+                    tries += 1
+                    progress(human, count, percent, part, p.kind,
+                             'The MGU is not back on the bus yet (gateway HSFZ type 0x%02X); waiting %.0f s and resending (attempt %d)...'
+                             % (v2.type, self.reachable_poll_ms / 1000.0, tries))
+                    time.sleep(self.reachable_poll_ms / 1000.0)
+                    v2 = send_frame_once()
+                if _is_unreachable(v2):
+                    progress(human, count, percent, part, p.kind,
+                             'The MGU did not come back on the bus within %.0f s after the reset; the unit may need a longer wait or a power cycle.'
+                             % (self.reachable_wait_ms / 1000.0))
+                else:
+                    progress(human, count, percent, part, p.kind,
+                             'The MGU is back on the bus after %d resend(s); continuing.' % tries)
             num += 1
             pendings += v2.pending
             is_seed = p.sid == 39 and _is_seed_level(p.sub)
