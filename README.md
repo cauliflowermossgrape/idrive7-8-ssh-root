@@ -43,7 +43,9 @@ Optionally (advanced, off by default) it can give a car its own **unique SSH key
   WSL/macOS/Linux. Check with `ssh -V`.
 - **Windows:** run your terminal / the app **as Administrator** so Windows uses
   the `169.254.x.x` link-local address on the ENET adapter.
-- An **ENET cable**, ignition on / car awake.
+- An **ENET cable**, ignition on / car awake. **Wired only** - a wired Ethernet
+  (ENET) connection is required both to flash and to connect over SSH later;
+  Wi-Fi adapters cannot carry it.
 
 ## Install (source)
 
@@ -90,10 +92,6 @@ issue so it can be documented here.
 ```
 python gui.py
 ```
-
-**Please use only etheret to enet wired cable**
-
-wifi adapters cant transmit ssh
 
 The window (above) has a VIN field + **Detect VIN** (auto-reads it from the car
 over ENET) and these buttons:
