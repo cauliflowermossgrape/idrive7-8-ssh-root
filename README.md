@@ -8,6 +8,24 @@ just an ENET cable and a laptop. It flashes the debug image, enrolls the SSH
 identity and keeps SSH running with debug mode **off** (no `B7F8E5` DTC).
 Optionally (advanced, off by default) it can give a car its own **unique SSH key**.
 
+> ## Run it once. SSH then stays on.
+>
+> **You run this tool one time per head unit.** After that first run succeeds,
+> **root SSH keeps working permanently** - on every boot, with debug mode off,
+> with no `B7F8E5` DTC - and you just connect with `ssh`.
+>
+> **Do not run it again "to be safe."** There is nothing to re-enable, and
+> re-flashing rewrites the unit and wipes its coding / CAFD definitions (and its
+> Digital Key pairings) for no benefit. Re-flash only if you changed the head
+> unit's software. If SSH simply stopped answering, use **Enable** (repair, no
+> flashing) - never a re-flash.
+>
+> The tool is what you need *before* the car is usable over SSH. After the first
+> run it is the car's own persistent SSH service doing the work, not the tool -
+> the tool is not involved in using SSH afterwards. (To *connect* you still plug
+> in the ENET cable, because the unit is reached on its link-local `169.254.x.x`
+> address - but nothing has to be flashed or enrolled again.)
+
 ![MGU iDrive SSH Tool](docs/screenshot.png)
 
 > **Disclaimer** - for use on **your own vehicle**, at your own risk. Flashing a
@@ -25,7 +43,9 @@ Optionally (advanced, off by default) it can give a car its own **unique SSH key
   WSL/macOS/Linux. Check with `ssh -V`.
 - **Windows:** run your terminal / the app **as Administrator** so Windows uses
   the `169.254.x.x` link-local address on the ENET adapter.
-- An **ENET cable**, ignition on / car awake.
+- An **ENET cable**, ignition on / car awake. **Wired only** - a wired Ethernet
+  (ENET) connection is required both to flash and to connect over SSH later;
+  Wi-Fi adapters cannot carry it.
 
 ## Install (source)
 
@@ -46,13 +66,16 @@ development, and restoring from a backup fixed it.
    head unit (HU / MGU), and export/save its coding (BimmerCode keeps a backup
    of each module it writes; some tools also let you "read FA/coding" and save
    it). BMW dealer tools (ISTA/E-Sys) can also save a full backup.
-2. **Flash + enable SSH** with this tool and grab the SSH key it saves for you.
+2. **Flash + enable SSH once** with this tool and grab the SSH key it saves for
+   you. This is the one and only run - it also makes SSH permanent.
 3. **After flashing** - if any functions misbehave or coding looks reset,
    restore the saved coding for the head unit with the same tool. In BimmerCode
    this is its restore/undo of the module you backed up.
 
 Only the flashing commands (`flash`, `fix-key`) carry this risk - `enable`,
-`persist`, `close`, `disable` and `status` do not reprogram the unit.
+`persist`, `close`, `disable` and `status` do not reprogram the unit. Since the
+one-time run is all you need, you should never repeat a flash just because
+something looks off - restore the coding instead.
 
 ### BMW Digital Key (issue #13)
 
@@ -70,16 +93,17 @@ issue so it can be documented here.
 python gui.py
 ```
 
-**Please use only etheret to enet wired cable**
-
-wifi adapters cant transmit ssh
-
 The window (above) has a VIN field + **Detect VIN** (auto-reads it from the car
 over ENET) and these buttons:
 
-- **Flash + Enable** - first-time setup: flash the debug image, enroll, make SSH
-  permanent.
-- **Enable** - re-open SSH on an already-flashed unit (no flashing).
+- **Flash + Enable** - **the only button you normally press.** One run: flashes
+  the debug image, enrolls, makes SSH persistent and turns debug mode off. After
+  it succeeds, root SSH is on **permanently** - on every boot, debug off, no
+  `B7F8E5` DTC - and you never need to press it again.
+- **Enable** - *repair only.* Re-opens SSH on a unit that is already flashed but
+  whose SSH has stopped answering (no flashing). If SSH already logs in, do
+  **not** press this: it re-activates debug mode and brings the `B7F8E5` DTC
+  back.
 - **Disable** - revert persistence and stop debug/SSH.
 - **Fix refusing SSH key** - repair for units that flash + enroll fine and open
   port 22 but still refuse root login (`Permission denied (publickey)`), because
@@ -98,9 +122,10 @@ printed in the log. No Python? Build / download the **`.exe`** - see
 
 ```
 python ssh_enable.py status     # read the current debug/SSH state (read-only)
-python ssh_enable.py flash --vin WBS1234ABCDX12345   # one-time: flash the
-                                 # debug package, then enable SSH
-python ssh_enable.py enable     # re-open SSH on an already-flashed unit (no flashing)
+python ssh_enable.py flash --vin WBS1234ABCDX12345 --persist   # ONCE per unit:
+                                 # flash + enroll + make SSH permanent
+python ssh_enable.py enable     # repair only: re-open SSH on an already-flashed
+                                 # unit whose SSH stopped answering (no flashing)
 python ssh_enable.py fix-key --vin WBS1234ABCDX12345  # re-flash carrying our key
                                  # (repair for units that refuse login - issue #2)
 python ssh_enable.py persist    # make SSH survive debug mode being OFF
@@ -168,32 +193,39 @@ With the ENET cable in and the car awake, confirm the tool can reach the unit
 python ssh_enable.py status
 ```
 
-## Everyday use
+## Everyday use - just connect
 
-Open SSH (after the one-time `flash`):
+**After the one-time run there is nothing to set up each time.** SSH is already
+on and starts itself on every boot; you do not run `flash`, `enable` or
+`persist` again and you do not need this tool. Plug in the ENET cable, open a
+terminal and connect.
+
+Connect with this car's own key (written out during the one-time run), e.g. from
+WSL:
+
+```
+ssh -i data/enrollments/<VIN>/id_rsa root@169.254.36.47
+```
+
+(The IP is the one the tool printed during the setup run; it can change with the
+DHCP-less link-local setup, so re-run `status` if the connection is refused.
+With PuTTY or WinSCP use `data\enrollments\<VIN>\id_rsa.ppk`.) See *The SSH key*.
+
+### Only if SSH stopped answering
+
+Then `enable` re-opens it without flashing:
 
 ```
 python ssh_enable.py enable
 ```
 
 You should see the enrollment cycles, `MGU SSH port 22 is open`, and then
-`SSH OK as root: uid=0(root)...` as final confirmation.
+`SSH OK as root: uid=0(root)...` as final confirmation. Re-run `persist` (or
+`enable --persist`) afterwards if you want it to survive debug mode being off
+again.
 
-Connect with this car's own key (printed and saved during `enable`/`flash`) -
-e.g. from WSL:
-
-```
-ssh -i data/enrollments/<VIN>/id_rsa root@169.254.36.47
-```
-
-(The IP is the one the tool prints during `status`/`enable`. With PuTTY or
-WinSCP use `data\enrollments\<VIN>\id_rsa.ppk`.) See *The SSH key*.
-
-Close it when done:
-
-```
-python ssh_enable.py close
-```
+To switch SSH off deliberately, use `close` (stop the service now) or `disable`
+(undo persistence and go back to stock). Neither is a step in daily use.
 
 ## Options
 
@@ -283,12 +315,17 @@ access via the dev key.
 
 Stock behaviour ties `sshd.socket` to `debug.target`, so SSH only runs while
 debug mode is active - and active debug mode sets the `B7F8E5` ("debugging
-active") DTC. `persist` fixes that in one shot:
+active") DTC. `persist` fixes that **permanently, in one shot**, which is why
+the one-time run is enough and SSH keeps working afterwards.
+
+**The GUI already does this for you** - its Flash + Enable passes `--persist`
+automatically and the "turn debug mode off" box is ticked by default, so one
+click is the whole job. On the command line you have to ask for it:
 
 ```
-python ssh_enable.py persist           # on an already-enabled unit
-python ssh_enable.py enable  --persist  # enable, then persist
-python ssh_enable.py flash --vin ... --persist   # flash, enable, then persist
+python ssh_enable.py flash --vin ... --persist   # ONCE: flash + enroll + persist
+python ssh_enable.py persist                     # persistence on a unit that has SSH, but not yet permanent
+python ssh_enable.py enable --persist            # re-open SSH, then persist
 ```
 
 It logs in over SSH with this car's key, confirms root, uploads and runs
