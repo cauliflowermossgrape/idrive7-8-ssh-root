@@ -11,7 +11,7 @@ Optionally (advanced, off by default) it can give a car its own **unique SSH key
 ![MGU iDrive SSH Tool](docs/screenshot.png)
 
 > **Disclaimer** - for use on **your own vehicle**, at your own risk. Flashing a
-> head unit can wipe its coding, delete its **BMW Digital Key** pairings and,
+> head unit will wipe its coding, delete its **BMW Digital Key** pairings and,
 > in the worst case, brick the module. Read
 > **Back up your coding before flashing** (below) first. The authors take no
 > responsibility for any damage.
