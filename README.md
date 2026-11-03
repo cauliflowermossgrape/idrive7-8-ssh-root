@@ -75,10 +75,14 @@ development, and restoring from a backup fixed it.
 > **If settings are still reset after the BimmerCode restore - recode the MGU
 > with E-Sys.** BimmerCode's restore does not always put back the full coding on
 > some cars, and it does **not** report a clear error when it fails - the restore
-> can look successful while the head unit is still partly un-coded. Symptoms are
-> a language that drops back to English, missing or wrong HMI tiles, an empty
-> original app list, no reverse-camera display and no driving-mode pop-up.
-> In that case recode `HU_MGU` with **E-Sys** from your saved NCD
+> can look successful while the head unit is still only **partly** recoded.
+> The symptom is settings that were reset and stay reset after the restore -
+> typically only some of them, so the car looks mostly fine while individual
+> features are still off (a language that drops back to English, missing or
+> wrong HMI tiles, an empty original app list, no reverse-camera display, no
+> driving-mode pop-up). If the restore did not bring *all* of them back, it did
+> not fully recode the unit.
+> Recode `HU_MGU` with **E-Sys** from your saved NCD
 > (`CAFD_..._...._....ncd`); re-flash or VO coding is not needed for this. If
 > E-Sys reports no CAFD installed (CAFD reads `FFFFFFFF`), inject the saved CAFD
 > first, then restore the NCD. Do not re-flash the unit to fix missing coding -
