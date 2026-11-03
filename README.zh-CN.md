@@ -8,6 +8,14 @@
 
 **翻译者：抖音：小白科技杂物社 · BiliBili：小白151 · GitHub：[JackieZ123430](https://github.com/JackieZ123430)**。
 
+> ## 运行一次即可，之后 SSH 一直可用
+>
+> **每台主机只需要运行本工具一次。** 第一次成功运行后，**root SSH 会永久可用**——每次开机自动启动、调试模式保持关闭、不再产生 `B7F8E5` 故障码——你只需要用 `ssh` 连接。
+>
+> **不要“保险起见”再运行一次。** 没有需要重新启用的东西，而再次刷写会重写主机、清空编码/CAFD（以及数字钥匙配对），不仅没有好处还有损失。只有在更换了主机软件时才需要重新刷写；如果只是 SSH 连不上，请用 **Enable**（仅修复，不刷写），不要重新刷写。
+>
+> 工具只负责“第一次让这台车能用 SSH”。之后实际工作的是车上的持久化 SSH 服务，工具本身不再参与使用过程。（连接时仍然要插 ENET 线，因为主机是通过 `169.254.x.x` 本地链路地址访问的——但不需要再刷写或注册。）
+
 ## 使用前准备
 
 > 仅用于自己的车辆或已获授权的测试设备。刷写可能清空主机编码/CAFD，删除 BMW 数字钥匙（Digital Key）配对，严重时可能导致模块无法启动。首次刷写前，请先备份主机编码，并在操作期间保持供电稳定、车辆唤醒。
@@ -61,15 +69,17 @@ python ssh_enable.py status
 
 ### 刷写并启用（Flash + Enable）
 
-用于需要安装调试包的首次设置。先备份编码，填写并核对 VIN、选择正确架构，再点击按钮。确认框会提示进入编程模式及重启，并显示即将写入的 VIN。
+**通常只需要按这一个按钮。** 用于需要安装调试包的首次设置。先备份编码，填写并核对 VIN、选择正确架构，再点击按钮。确认框会提示进入编程模式及重启，并显示即将写入的 VIN。
 
-工具写入调试包、等待主机重启、注册身份，随后按勾选项设置 SSH 持久化。不要因等待而重复点击或中断供电。
+工具写入调试包、等待主机重启、注册身份，随后按勾选项设置 SSH 持久化（默认勾选，即关闭调试模式）。**跑成功一次之后，root SSH 就永久可用了**，不需要再次点击。不要因等待而重复点击或中断供电。
 
 刷写后如出现功能异常或编码复位，请用此前备份编码的同一工具恢复。原项目曾实际遇到编码被清空的情况；BimmerCode、ISTA/E-Sys 等工具的具体备份及恢复操作请按相应工具说明执行。
 
-### 启用 SSH（Enable）
+### 启用 SSH（Enable）——仅用于修复
 
-用于已经刷入所需调试包的主机，执行身份注册和 SSH 启用，**不重新刷写**。如果 SSH 已经能登录，不需要为了切换中文而再执行一次启用或刷写。
+用于已经刷入所需调试包、但 SSH 已经连不上的主机，执行身份注册和 SSH 启用，**不重新刷写**。
+
+如果 SSH 已经能登录，**不要**执行此项：它会重新激活调试模式，`B7F8E5` 故障码也会重新出现。
 
 请以日志中端口开放及 `SSH OK as root: uid=0(root)...` 的验证结果确认成功，仅有 VIN 或网关发现成功不代表 SSH 登录成功。
 
@@ -92,6 +102,8 @@ python ssh_enable.py status
 如果换密钥后暂时不能连接，原项目建议按住音量/电源旋钮约 20–30 秒，让主机重启后加载新密钥。
 
 ## 启用后如何连接
+
+**一次性运行完成之后，日常不需要任何配置步骤**：SSH 已经开启并随开机自动启动，不需要再跑 `flash`、`enable` 或 `persist`，也不需要这个工具。插上 ENET 线，打开终端连接即可。
 
 工具会将密钥和连接信息保存到：
 
@@ -127,14 +139,14 @@ ssh -i "data/enrollments/<VIN>/id_rsa" root@<MGU-IP>
 
 ```powershell
 python ssh_enable.py status
-python ssh_enable.py flash --vin WBS1234ABCDX12345 --persist
-python ssh_enable.py enable --persist
-python ssh_enable.py persist
-python ssh_enable.py close
-python ssh_enable.py disable
+python ssh_enable.py flash --vin WBS1234ABCDX12345 --persist   # 每台主机只运行一次
+python ssh_enable.py enable --persist                          # 仅在 SSH 连不上时修复
+python ssh_enable.py persist                                   # 已有 SSH 但还不持久时补上
+python ssh_enable.py close                                     # 主动关闭 SSH
+python ssh_enable.py disable                                   # 撤销持久化并关闭 SSH
 ```
 
-示例 VIN 仅为占位，不能直接用于真实主机。`close` 停止调试/SSH，`disable` 还会尝试撤销持久化。命令行 `enable` / `flash` 需要显式加上 `--persist` 才请求持久化；GUI 会自动添加。
+示例 VIN 仅为占位，不能直接用于真实主机。`close` 停止调试/SSH，`disable` 还会尝试撤销持久化；两者都不是日常步骤，只有你确实想关掉 SSH 时才用。命令行 `enable` / `flash` 需要显式加上 `--persist` 才请求持久化；GUI 会自动添加。
 
 | 参数 | 用途 |
 | --- | --- |
