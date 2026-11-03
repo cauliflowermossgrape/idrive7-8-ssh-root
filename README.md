@@ -422,6 +422,22 @@ MGU-SSH.spec, build_exe.bat PyInstaller build of the Windows .exe
 Keep `data/` next to `ssh_enable.py`; the private keys are what get you into
 the unit - treat them like passwords.
 
+## FAQ - compatibility
+
+- **Is my iDrive supported?** **Yes - every version of iDrive 7 and iDrive 8.**
+  The tool works on all MGU head units (iDrive 7 / MGU ID7, ID8-BDC3 and
+  ID8-BCP), whatever software level the unit is on. It gates on the head unit
+  type (BTLD `00003F36`), not on a particular I-Step, so a newer or older
+  software level does not put your car out of scope.
+- **Should I update the I-Step first?** **Yes - updating the I-Step (ISTA/E-Sys,
+  or the dealer) before you start is recommended.** It is not required - the tool
+  works on the stock software of any version - but a current I-Step gives you
+  the known-good software level, fewer surprises with the flash and enrollment,
+  and the fixes BMW shipped for the head unit. If your car is already on a recent
+  I-Step, there is nothing to do.
+- **What is not supported?** NBT/EVO head units (iDrive 6 and older). The tool
+  refuses them up front rather than writing anything.
+
 ## License
 
 Released into the **public domain** under [The Unlicense](LICENSE) - do whatever
