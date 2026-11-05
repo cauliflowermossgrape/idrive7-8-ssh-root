@@ -1,12 +1,32 @@
 import ctypes
+import ctypes.util
 import ctypes.wintypes
 import platform
+import select
 import socket
 import struct
+import time as _time
 DISCOVERY_PORT = 6811
 PROBE = b'\x00\x00\x00\x00\x00\x11'
 MARKER = b'BMWVIN'
 FALLBACK_BROADCASTS = ('255.255.255.255', '169.254.255.255')
+IFF_UP = 1
+IFF_BROADCAST = 2
+
+class _Sockaddr(ctypes.Structure):
+    _fields_ = [('sa_len', ctypes.c_ubyte), ('sa_family', ctypes.c_ubyte), ('sa_data', ctypes.c_ubyte * 14)]
+
+class _Ifaddrs(ctypes.Structure):
+    pass
+_Ifaddrs._fields_ = [('ifa_next', ctypes.POINTER(_Ifaddrs)), ('ifa_name', ctypes.c_char_p), ('ifa_flags', ctypes.c_uint), ('ifa_addr', ctypes.POINTER(_Sockaddr)), ('ifa_netmask', ctypes.POINTER(_Sockaddr)), ('ifa_dstaddr', ctypes.POINTER(_Sockaddr)), ('ifa_data', ctypes.c_void_p)]
+
+def _ipv4_from_sockaddr(sa_ptr):
+    if not sa_ptr:
+        return None
+    sa = sa_ptr.contents
+    if sa.sa_family != socket.AF_INET:
+        return None
+    return bytes(bytearray(sa.sa_data[2:6]))
 
 class Gateway:
 
@@ -78,44 +98,143 @@ def windows_broadcast_addresses():
     except Exception:
         return []
 
+def posix_broadcast_targets():
+    """Return [(broadcast, source)] for every up IPv4 interface that can broadcast.
+
+    macOS/Linux route an unbound 255.255.255.255 out of the default interface,
+    so the ENET probe never reaches the car on a second adapter. Binding each
+    probe to that interface's own address is what selects the right NIC - no
+    root, no SO_BINDTODEVICE.
+    """
+    targets, ptr = [], ctypes.POINTER(_Ifaddrs)()
+    libc = ctypes.CDLL(ctypes.util.find_library('c'), use_errno=True)
+    if libc.getifaddrs(ctypes.byref(ptr)) != 0:
+        return targets
+    try:
+        cur = ptr
+        while cur:
+            entry = cur.contents
+            ip = _ipv4_from_sockaddr(entry.ifa_addr)
+            mask = _ipv4_from_sockaddr(entry.ifa_netmask)
+            if ip and mask and entry.ifa_flags & IFF_UP and entry.ifa_flags & IFF_BROADCAST:
+                addr = struct.unpack('>I', ip)[0]
+                netmask = struct.unpack('>I', mask)[0]
+                bcast = socket.inet_ntoa(struct.pack('>I', addr | ~netmask & 4294967295))
+                source = socket.inet_ntoa(ip)
+                if (bcast, source) not in targets:
+                    targets.append((bcast, source))
+            cur = entry.ifa_next
+    finally:
+        libc.freeifaddrs(ptr)
+    return targets
+
+def broadcast_targets():
+    """[(broadcast, source)] to try; source None lets the OS choose the route."""
+    if platform.system() == 'Windows':
+        return [(b, None) for b in windows_broadcast_addresses()]
+    targets = posix_broadcast_targets()
+    if targets:
+        return targets
+    return [(b, None) for b in FALLBACK_BROADCASTS]
+
+def _respond(sock, log, wait_s):
+    deadline = _time.monotonic() + wait_s
+    while True:
+        remain = deadline - _time.monotonic()
+        if remain <= 0:
+            return
+        ready, _, _ = select.select([sock], [], [], remain)
+        if not ready:
+            return
+        try:
+            data, addr = sock.recvfrom(4096)
+        except OSError:
+            return
+        vin = parse_reply(data)
+        if vin is None:
+            log('Ignored a UDP %d reply from %s (no BMWVIN marker).' % (DISCOVERY_PORT, addr[0]))
+            continue
+        yield Gateway(addr[0], vin)
+
+def _discover_bound(targets, timeout_ms, overall_ms, log):
+    """Probe from every interface at once so one adapter being slow or asleep
+    cannot consume the whole receive window before another one replies."""
+    sockets = []
+    try:
+        for bcast, source in targets:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+            try:
+                if source:
+                    sock.bind((source, 0))
+                sock.setblocking(False)
+            except OSError as e:
+                log('Skipped %s: %s' % (bcast, e))
+                sock.close()
+                continue
+            try:
+                sock.sendto(PROBE, (bcast, DISCOVERY_PORT))
+            except OSError as e:
+                log('Skipped %s: %s' % (bcast, e))
+                sock.close()
+                continue
+            log('ENET discovery broadcast -> %s:%d (from %s)' % (bcast, DISCOVERY_PORT, source or 'auto'))
+            sockets.append(sock)
+        if not sockets:
+            return []
+        results, order = {}, []
+        deadline = _time.monotonic() + overall_ms / 1000.0
+        quiet = _time.monotonic() + timeout_ms / 1000.0
+        while True:
+            now = _time.monotonic()
+            if now >= deadline or (order and now >= quiet):
+                break
+            ready, _, _ = select.select(sockets, [], [], min(0.1, deadline - now))
+            if not ready:
+                continue
+            for sock in ready:
+                try:
+                    data, addr = sock.recvfrom(4096)
+                except OSError:
+                    continue
+                vin = parse_reply(data)
+                if vin is None:
+                    log('Ignored a UDP %d reply from %s (no BMWVIN marker).' % (DISCOVERY_PORT, addr[0]))
+                    continue
+                if addr[0] not in results:
+                    results[addr[0]] = vin
+                    order.append(addr[0])
+                    quiet = _time.monotonic() + timeout_ms / 1000.0
+        return [Gateway(ip, results[ip]) for ip in order]
+    finally:
+        for sock in sockets:
+            sock.close()
+
 def discover(timeout_ms=500, overall_ms=None, broadcasts=None, log=None):
     log = log or (lambda *a, **k: None)
     overall_ms = overall_ms or timeout_ms * 4
-    targets = broadcasts if broadcasts is not None else windows_broadcast_addresses()
-    for fb in FALLBACK_BROADCASTS:
-        if fb not in targets:
-            targets.append(fb)
-    results = {}
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        import time as _time
-        deadline = _time.monotonic() + overall_ms / 1000.0
-        for target in list(targets):
+    if broadcasts is not None:
+        targets = [(b, None) for b in broadcasts]
+    else:
+        targets = broadcast_targets()
+    if platform.system() != 'Windows':
+        return _discover_bound(targets, timeout_ms, overall_ms, log)
+    results, order = {}, []
+    for bcast, _ in targets:
+        log('ENET discovery broadcast -> %s:%d (from %s)' % (bcast, DISCOVERY_PORT, 'auto'))
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
             try:
-                sock.sendto(PROBE, (target, DISCOVERY_PORT))
-                log('ENET discovery broadcast -> %s:%d' % (target, DISCOVERY_PORT))
+                sock.sendto(PROBE, (bcast, DISCOVERY_PORT))
             except OSError:
-                pass
-        sock.settimeout(min(timeout_ms, 100) / 1000.0)
-        seen_order = []
-        import time as _time
-        while _time.monotonic() < deadline:
-            try:
-                data, addr = sock.recvfrom(4096)
-            except socket.timeout:
-                if seen_order:
-                    break
                 continue
-            except OSError:
-                break
-            vin = parse_reply(data)
-            if vin is None:
-                continue
-            ip = addr[0]
-            if ip not in results:
-                results[ip] = vin
-                seen_order.append(ip)
-        return [Gateway(ip, results[ip]) for ip in seen_order]
-    finally:
-        sock.close()
+            sock.settimeout(max(timeout_ms, 1) / 1000.0)
+            for gw in _respond(sock, log, timeout_ms / 1000.0):
+                if gw.ip not in results:
+                    results[gw.ip] = gw.vin
+                    order.append(gw.ip)
+        finally:
+            sock.close()
+    return [Gateway(ip, results[ip]) for ip in order]
+

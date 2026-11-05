@@ -104,8 +104,16 @@
       "translation": "失败：{0}"
     },
     {
-      "source": "ENET discovery broadcast -> {0}:{1}",
-      "translation": "ENET 搜索广播 → {0}:{1}"
+      "source": "ENET discovery broadcast -> {0}:{1} (from {2})",
+      "translation": "ENET 搜索广播 → {0}:{1}（来自 {2}）"
+    },
+    {
+      "source": "Skipped {0}: {1}",
+      "translation": "已跳过 {0}：{1}"
+    },
+    {
+      "source": "Ignored a UDP {0} reply from {1} (no BMWVIN marker).",
+      "translation": "已忽略来自 {1} 的 UDP {0} 响应（没有 BMWVIN 标记）。"
     },
     {
       "source": "Found {0} ENET gateways:",
