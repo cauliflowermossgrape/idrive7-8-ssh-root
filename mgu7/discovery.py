@@ -13,8 +13,19 @@ FALLBACK_BROADCASTS = ('255.255.255.255', '169.254.255.255')
 IFF_UP = 1
 IFF_BROADCAST = 2
 
+# struct sockaddr differs by OS: the BSD family (macOS included) prefixes a
+# 1-byte sa_len before a 1-byte sa_family; Linux has no sa_len and a 2-byte
+# sa_family. Reading the wrong layout makes AF_INET (2) look like family 0 on
+# little-endian Linux, so every interface is skipped and discovery silently
+# falls back to the unbound broadcast it was meant to replace. The IPv4 address
+# sits at the same offset (sa_data[2:6]) in both; only the family field moves.
+_BSD_SOCKADDR = platform.system() in ('Darwin', 'FreeBSD', 'OpenBSD', 'NetBSD', 'DragonFly')
+
 class _Sockaddr(ctypes.Structure):
-    _fields_ = [('sa_len', ctypes.c_ubyte), ('sa_family', ctypes.c_ubyte), ('sa_data', ctypes.c_ubyte * 14)]
+    if _BSD_SOCKADDR:
+        _fields_ = [('sa_len', ctypes.c_ubyte), ('sa_family', ctypes.c_ubyte), ('sa_data', ctypes.c_ubyte * 14)]
+    else:
+        _fields_ = [('sa_family', ctypes.c_ushort), ('sa_data', ctypes.c_ubyte * 14)]
 
 class _Ifaddrs(ctypes.Structure):
     pass
