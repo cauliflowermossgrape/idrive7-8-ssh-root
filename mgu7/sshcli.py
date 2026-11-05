@@ -11,6 +11,8 @@ Everything here takes a private-key *file path* (any format OpenSSH reads:
 OpenSSH, PKCS#1 or PKCS#8 PEM) - no in-memory key objects."""
 
 import contextlib
+import csv
+import io
 import os
 import shutil
 import subprocess
@@ -64,6 +66,55 @@ def empty_known_hosts():
                 pass
 
 
+_CURRENT_SID = None  # cached result of _current_user_sid()
+
+
+def _current_user_sid():
+    """The current process user's SID as a string (e.g. 'S-1-5-21-...'), or None.
+
+    icacls resolves a raw SID regardless of 8.3 short paths, spaces in the
+    account name, or an elevated token - a bare %USERNAME% does not always. The
+    lookup (via `whoami /user`) is cached for the session."""
+    global _CURRENT_SID
+    if _CURRENT_SID is not None:
+        return _CURRENT_SID or None
+    sid = ''
+    try:
+        out = subprocess.run(['whoami', '/user', '/fo', 'csv', '/nh'],
+                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                             timeout=10).stdout.decode('utf-8', 'replace')
+        row = next(csv.reader(io.StringIO(out.strip())), [])
+        for field in row:
+            f = field.strip()
+            if f.upper().startswith('S-1-'):
+                sid = f
+                break
+    except (OSError, ValueError, StopIteration, subprocess.SubprocessError):
+        sid = ''
+    _CURRENT_SID = sid
+    return sid or None
+
+
+def _icacls(args):
+    """Run icacls with the given args; True iff it exits 0. Never raises."""
+    try:
+        p = subprocess.run(['icacls'] + list(args), stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL, timeout=15)
+        return p.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def _readable(path):
+    """True iff we can open *path* and read a byte right now."""
+    try:
+        with open(path, 'rb') as f:
+            f.read(1)
+        return True
+    except OSError:
+        return False
+
+
 def secure_key_file(path):
     """Lock *path* down so the OpenSSH client will accept it as a private key.
 
@@ -71,25 +122,62 @@ def secure_key_file(path):
     that grants the Users / Authenticated Users group read access; OpenSSH then
     refuses it with 'UNPROTECTED PRIVATE KEY FILE' / 'bad permissions' and the
     key 'will be ignored'. Python's os.chmod(0o600) does NOT fix this on Windows
-    (it only toggles the read-only bit, not the ACL). We grant the current user
-    full control and then strip every inherited ACE, so the final DACL is this
-    user only - which satisfies OpenSSH and still lets us rewrite/delete it. On
-    POSIX a plain 0600 is enough. Best-effort: never raises."""
+    (it only toggles the read-only bit, not the ACL). We rewrite the DACL to the
+    current user only - which satisfies OpenSSH and still lets us read/delete it.
+
+    The hard rule here (issue #33): NEVER leave the file unreadable by us. An
+    earlier version granted %USERNAME% then stripped inheritance in two steps;
+    when the grant silently failed to resolve (8.3 'ALILAP~1' paths, an account
+    name with a space, or an elevated owner), `/inheritance:r` left an empty DACL
+    and the key could no longer be read - so ssh logged 'Load key ...: Permission
+    denied', offered nothing, and the unit looked like it had refused the key.
+    We now grant by SID (which always resolves), verify the file is still
+    readable after every change, and fall back to a readable (if too-open) ACL
+    rather than an unreadable one. On POSIX a plain 0600 is enough.
+    Best-effort: never raises."""
     try:
-        if os.name == 'nt':
-            user = os.environ.get('USERNAME') or os.environ.get('USER') or ''
-            if user:
-                # Grant first, THEN drop inheritance: if the grant name failed to
-                # resolve, inheritance:r alone would leave the file with no ACEs
-                # at all (unreadable even by us), which is worse than too-open.
-                subprocess.run(['icacls', path, '/grant:r', '%s:F' % user],
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                subprocess.run(['icacls', path, '/inheritance:r'],
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        else:
+        if os.name != 'nt':
             os.chmod(path, 0o600)
-    except (OSError, ValueError):
-        pass
+            return
+    except OSError:
+        return
+    # Build the DACL as {principal:F} in ONE icacls call so the explicit grant
+    # survives the inheritance strip. Prefer the SID, fall back to the name.
+    principals = []
+    sid = _current_user_sid()
+    if sid:
+        principals.append('*' + sid)
+    user = os.environ.get('USERNAME') or os.environ.get('USER') or ''
+    if user:
+        principals.append(user)
+    for who in principals:
+        if _icacls([path, '/inheritance:r', '/grant:r', '%s:F' % who]) and _readable(path):
+            return
+        # This attempt may have stripped inheritance without a working grant,
+        # leaving the key unreadable - restore inheritance before trying the
+        # next principal or giving up.
+        if not _readable(path):
+            _icacls([path, '/reset'])
+    # Last resort: a readable (possibly too-open) key beats an unreadable one.
+    # ssh may warn 'bad permissions', but at least it can read and offer the key.
+    if not _readable(path):
+        _icacls([path, '/reset'])
+
+
+def is_local_key_permission_error(err):
+    """True if *err* is the OpenSSH client failing to use the key FILE on this
+    PC, rather than the server refusing the key.
+
+    A key the client cannot read prints 'Load key "...": Permission denied'; a
+    too-open key prints 'bad permissions' / 'UNPROTECTED PRIVATE KEY FILE'. In
+    all of these no key is ever offered, so the 'Permission denied (publickey)'
+    that follows is a side effect, not a real rejection by the unit (issue #33)."""
+    if not err:
+        return False
+    e = err.lower()
+    if 'load key' in e and 'permission denied' in e:
+        return True
+    return 'bad permissions' in e or 'unprotected private key file' in e
 
 
 def ssh_binary():
@@ -178,6 +266,7 @@ def probe_login(host, key_path, user=SSH_USER, port=SSH_PORT, timeout=30,
            'output': out.strip(), 'rc': rc}
     if rc != 0:
         res['error'] = (err.strip() or ('exit code %d' % rc))
+        res['key_unreadable'] = is_local_key_permission_error(err)
     return res
 
 
