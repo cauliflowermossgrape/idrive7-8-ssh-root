@@ -23,6 +23,28 @@ def _is_unreachable(resp):
     i.e. a transport-level 'target ECU not reachable' (e.g. HSFZ type 0x0043). A
     timeout (no frame at all) is NOT this case; it is handled separately."""
     return (not resp.timeout) and resp.frame is not None and resp.type != TYPE_DIAG
+
+
+# NRCs a DiagnosticSessionControl (0x10) request gets while the HU is still coming
+# up after a reset: conditionsNotCorrect, subFunctionNotSupportedInActiveSession,
+# serviceNotSupportedInActiveSession. They are transient - the right session is
+# reachable once the HU finishes booting - so we resend rather than skip.
+_SESSION_RETRY_NRCS = (0x22, 0x7E, 0x7F)
+
+
+def _is_session_not_ready(frame, resp):
+    """True if *resp* to a DiagnosticSessionControl (service 0x10) request means
+    the HU has not finished re-initialising after a reset: either no answer at
+    all (echoed but timed out) or a transient not-in-session negative. Skipping
+    such a frame leaves the session un-entered, so the following SecurityAccess
+    is rejected 7F 27 7F and the flash aborts in programming mode (issue #18,
+    the second-reset case). A positive 0x50 response ends the wait."""
+    if frame.sid != 0x10:
+        return False
+    if resp.timeout:
+        return True
+    x = resp.payload
+    return bool(x is not None and x.negative and x.sid == 0x10 and x.nrc in _SESSION_RETRY_NRCS)
 ID7 = 'id7'
 ID8_BDC3 = 'id8-bdc3'
 ID8_BCP = 'id8-bcp'
@@ -625,6 +647,29 @@ class FlashEngine:
                 else:
                     progress(human, count, percent, part, p.kind,
                              'The MGU is back on the bus after %d resend(s); continuing.' % tries)
+            # The HU answered the gateway but can't honour the diagnostic-session
+            # request yet because it is still booting after a reset (no response,
+            # or a transient 7F 10 7E/22/7F). Wait and resend the SAME session
+            # frame until it takes - skipping it strands the flash at the next
+            # SecurityAccess with 7F 27 7F (issue #18, second-reset case).
+            elif _is_session_not_ready(p, v2):
+                deadline = time.monotonic() + self.reachable_wait_ms / 1000.0
+                tries = 0
+                while _is_session_not_ready(p, v2) and time.monotonic() < deadline:
+                    tries += 1
+                    detail = 'no response' if v2.timeout else '7F %02X %02X' % (p.sid, v2.payload.nrc)
+                    progress(human, count, percent, part, p.kind,
+                             'The HU has not re-entered the diagnostic session yet (%s); waiting %.0f s and resending (attempt %d)...'
+                             % (detail, self.reachable_poll_ms / 1000.0, tries))
+                    time.sleep(self.reachable_poll_ms / 1000.0)
+                    v2 = send_frame_once()
+                if _is_session_not_ready(p, v2):
+                    progress(human, count, percent, part, p.kind,
+                             'The HU did not re-enter the diagnostic session within %.0f s; it may need a longer wait or a power cycle.'
+                             % (self.reachable_wait_ms / 1000.0))
+                else:
+                    progress(human, count, percent, part, p.kind,
+                             'The HU re-entered the diagnostic session after %d resend(s); continuing.' % tries)
             num += 1
             pendings += v2.pending
             is_seed = p.sid == 39 and _is_seed_level(p.sub)
