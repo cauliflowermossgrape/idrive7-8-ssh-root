@@ -209,9 +209,30 @@ def install_certificate(client, certificate, pmo_certificate_pem, dst=MGU):
             '"71 01 A0 FD <status>", got %s).' % data.hex())
     return data[4]
 
-def readback_certificate_address(client, dst=MGU):
-    raw = client.request(dst, DID_READBACK, P_ADVANCED)
-    validate_routine_response(raw, DID_READBACK, dst, 'readback')
+def readback_certificate_address(client, dst=MGU, retries=5, backoff_s=0.3):
+    """Confirm the enrollment by reading 22 17 2A. Returns True on a positive
+    response, False otherwise - it never raises.
+
+    Right after A0 FD the unit often answers 7F 22 21 (busyRepeatRequest) for a
+    moment while it finishes bringing the interface up (issue #30), so resend on
+    0x21 with a short backoff before giving up. The real success signal is the
+    A0 FD status (0x00), and SSH is already up by this point, so a readback that
+    never clears must NOT abort the enroll or discard the key bundle - the caller
+    treats a False here as a non-fatal warning."""
+    for attempt in range(retries):
+        raw = client.request(dst, DID_READBACK, P_ADVANCED)
+        x = match_response(raw, dst)
+        if x is not None and not x.negative:
+            try:
+                x.require(DID_READBACK[0])
+                return True
+            except HsfzError:
+                return False
+        if x is not None and x.negative and x.nrc == 0x21 and attempt + 1 < retries:
+            time.sleep(backoff_s)
+            continue
+        return False
+    return False
 
 def probe_port(host, port=SSH_PORT, timeout=3.0):
     start = time.monotonic()

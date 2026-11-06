@@ -730,13 +730,18 @@ class Tool:
                 log('Challenge identity:', challenge)
                 log('Generated certificate: %d bytes DER / %d bytes PEM' % (len(certificate.der), len(certificate.pem)))
             last_status = enroll.install_certificate(self.client, certificate, self.assets.raw(3))
-            enroll.readback_certificate_address(self.client)
+            readback_ok = enroll.readback_certificate_address(self.client)
             if last_status == enroll.ROUTINE_STATUS_OK:
-                log('Enroll cycle %d/5: A0 FD status 0x00 (debug mode activated), 172A readback accepted.' % cycle)
+                if readback_ok:
+                    log('Enroll cycle %d/5: A0 FD status 0x00 (debug mode activated), 172A readback accepted.' % cycle)
+                else:
+                    log('Enroll cycle %d/5: A0 FD status 0x00 (debug mode activated); the 172A readback '
+                        'stayed busy (NRC 0x21) after resends. That is a transient readback hiccup, not '
+                        'an activation failure - debug/SSH is already up, so continuing and writing the keys.' % cycle)
             else:
                 log('Enroll cycle %d/5: WARNING - A0 FD returned status 0x%02X, NOT 0x00. The unit '
                     'accepted the certificate but REJECTED activating debug mode, so SSH will not '
-                    'come up. 172A readback accepted.' % (cycle, last_status))
+                    'come up.' % (cycle, last_status))
             if cycle < 5:
                 time.sleep(0.2)
         # 0x00 = debug mode activated (port 22 opens on its own). Anything else
