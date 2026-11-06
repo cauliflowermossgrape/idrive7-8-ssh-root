@@ -231,16 +231,25 @@ class Tool:
         log('Port 22 is open - waiting 10 s for the SSH daemon to finish starting...')
         time.sleep(10)
         r = None
+        self._ssh_key_unreadable = False
         for attempt in (1, 2, 3):
             log('Verifying SSH login as root with the recovered identity%s...' % ((' (retry %d)' % (attempt - 1)) if attempt > 1 else ''))
             r = sshcli.probe_login(self.mgu_ip, identity, command='id')
             if r.get('connected'):
                 log('SSH OK as root:', r.get('output') or '(no output)')
                 return True
+            if r.get('key_unreadable'):
+                self._ssh_key_unreadable = True
             if attempt < 3:
                 log('SSH not answering yet (%s) - retrying in 8 s...' % (r.get('error') or 'no response'))
                 time.sleep(8)
-        log('SSH verification failed:', (r or {}).get('error') or 'no data')
+        if self._ssh_key_unreadable:
+            log('SSH verification failed: the OpenSSH client on THIS PC could not READ '
+                'the private key file (%s), so it never offered a key - this is a '
+                'Windows key-file permission problem, NOT a refusal by the unit. See '
+                'the guidance below.' % ((r or {}).get('error') or 'Load key: Permission denied'))
+        else:
+            log('SSH verification failed:', (r or {}).get('error') or 'no data')
         return False
 
     def _resolve_enrollment_dir(self):
@@ -519,6 +528,8 @@ class Tool:
             return EXIT_OK
         if not self._debug_activated:
             return self._activation_rejected(identity)
+        if getattr(self, '_ssh_key_unreadable', False):
+            return self._key_unreadable_finish(identity)
         log('FAILED: enrollment completed and port 22 is open, but SSH login as '
             'root was REJECTED (publickey denied), so SSH is NOT usable. The key '
             'written to %s is the one the unit refused. See issue #2: on some '
@@ -533,6 +544,25 @@ class Tool:
             'port 22 never opens and SSH is NOT usable. The certificate was accepted - this '
             'is not a key or certificate problem; the unit declined to enable debug mode. '
             'The key written to %s will work only once A0 FD returns 0x00.' % identity)
+        return EXIT_ERROR
+
+    def _key_unreadable_finish(self, identity):
+        """Finish for the case (issue #33) where debug mode is on and port 22 is
+        open, but the local OpenSSH client could not READ the key file, so no key
+        was ever offered. This is NOT a refusal by the unit - the car is almost
+        certainly already rooted; the fix is on this PC."""
+        folder = os.path.dirname(identity) if identity else '(data\\enrollments\\<VIN>)'
+        log('NOT a unit problem (issue #33): debug mode is ON and port 22 is OPEN, but '
+            'the OpenSSH client on THIS PC could not READ the private key file, so it '
+            'offered no key. The "Permission denied (publickey)" you see is a side effect '
+            'of that - the MGU did not reject anything, and your unit is almost certainly '
+            'already rooted.')
+        log('  To connect, do ONE of these:')
+        log('    1. Easiest - use PuTTY or WinSCP with the .ppk key in %s '
+            '(PuTTY does not apply the strict file-permission check).' % folder)
+        log('    2. Or fix the key file ACL and connect by hand:')
+        log('         icacls "%s" /inheritance:r /grant:r "%%USERNAME%%:F"' % identity)
+        log('         ssh -i "%s" root@%s' % (identity, self.mgu_ip or '<MGU-IP>'))
         return EXIT_ERROR
 
     def flash(self):
@@ -568,6 +598,8 @@ class Tool:
             return EXIT_OK
         if not self._debug_activated:
             return self._activation_rejected(identity)
+        if getattr(self, '_ssh_key_unreadable', False):
+            return self._key_unreadable_finish(identity)
         log('FAILED: the flash and enrollment completed and port 22 is open, but '
             'SSH login as root was REJECTED (publickey denied), so SSH is NOT '
             'usable. The key written to %s is the one the unit refused. See issue '
@@ -623,6 +655,8 @@ class Tool:
             return EXIT_OK
         if not self._debug_activated:
             return self._activation_rejected(identity)
+        if getattr(self, '_ssh_key_unreadable', False):
+            return self._key_unreadable_finish(identity)
         log('FAILED: the key-flash and enrollment completed and port 22 is open, '
             'but SSH login as root was still REJECTED. On software levels where '
             'the unsigned region does not persist, the key was not written - '
