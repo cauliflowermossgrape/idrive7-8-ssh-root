@@ -140,6 +140,8 @@ class GuiTests(unittest.TestCase):
         for language in ('English', '简体中文'):
             self.select(language)
             self.app.vin.set('TESTVIN1234567890')
+            self.app._on_variant(gui.VARIANT_CHOICES[0][1])  # user picks ID7
+            self.assertEqual(self.app.arch.get(), 'id7')
             with patch.object(self.app, '_run') as run, patch.object(gui.messagebox, 'askyesno', return_value=True) as confirm:
                 self.app.do_enable()
                 self.assertEqual(run.call_args.args[0], ['enable','--persist','--no-unique-key','--yes','--vin','TESTVIN1234567890','--gateway','auto','--arch','id7'])
@@ -153,6 +155,22 @@ class GuiTests(unittest.TestCase):
                 self.app.do_flash()
                 error.assert_called_once()
                 run.assert_not_called()
+
+    def test_flash_blocked_until_a_variant_is_chosen(self):
+        # No silent ID7 default: flashing the wrong variant bricks the unit into
+        # programming mode (issue #47), so flash/fix-key must refuse until the
+        # user picks one, and _common_args must not inject an --arch.
+        self.app.vin.set('TESTVIN1234567890')
+        self.assertEqual(self.app.arch.get(), '')
+        self.assertNotIn('--arch', self.app._common_args())
+        for action in (self.app.do_flash, self.app.do_fix_key):
+            with patch.object(gui.messagebox, 'showerror') as error, patch.object(self.app, '_run') as run:
+                action()
+                error.assert_called_once()
+                run.assert_not_called()
+        # once a variant is chosen, _common_args carries it through
+        self.app._on_variant(gui.VARIANT_CHOICES[1][1])  # ID8 BDC3
+        self.assertEqual(self.app._common_args()[-2:], ['--arch', 'id8-bdc3'])
 
     def test_ui_catalog_coverage(self):
         catalog = self.app.i18n.catalogs['zh-CN']['strings']

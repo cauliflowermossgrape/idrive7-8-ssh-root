@@ -47,6 +47,18 @@ from mgu7 import discovery
 from mgu7.flash import ID7, ID8_BDC3, ID8_BCP
 
 ARCHES = (ID7, ID8_BDC3, ID8_BCP)
+# The flash contract MUST match the head unit. Flashing an ID8 with the ID7
+# image (or vice-versa) partially writes the wrong regions and leaves the unit
+# stuck in programming mode (issue #47). The software baseline alone (030 vs
+# 036) is not a reliable enough discriminator to auto-pick, so we make the user
+# choose their exact variant - there is no silent default.
+VARIANT_PROMPT = "— select your car —"
+VARIANT_CHOICES = (
+    (ID7, "ID7 — BDC2 / BDC3  (software 030.xxx)"),
+    (ID8_BDC3, "ID8 — BDC3  (software 036.xxx)"),
+    (ID8_BCP, "ID8 — BCP  (software 036.xxx)"),
+)
+_VARIANT_BY_LABEL = {label: code for code, label in VARIANT_CHOICES}
 
 # palette
 BG = "#f3f4f6"
@@ -99,7 +111,8 @@ class App:
         self.vin = tk.StringVar()
         self.gateway = tk.StringVar(value="auto")
         self.mgu_ip = tk.StringVar()
-        self.arch = tk.StringVar(value=ID7)
+        self.arch = tk.StringVar(value="")  # empty until the user picks a variant
+        self.variant_label = tk.StringVar(value=VARIANT_PROMPT)
         self.disable_debug = tk.BooleanVar(value=True)
         self.unique_key = tk.BooleanVar(value=False)
 
@@ -188,10 +201,21 @@ class App:
         adv.pack(fill="x", pady=(12, 0))
         self._label(ttk.Label, adv, "Gateway").grid(row=0, column=0, sticky="w", padx=(0, 6))
         ttk.Entry(adv, textvariable=self.gateway, width=16).grid(row=0, column=1, sticky="w")
-        self._label(ttk.Label, adv, "Variant").grid(row=0, column=2, sticky="w", padx=(16, 6))
-        ttk.OptionMenu(adv, self.arch, self.arch.get(), *ARCHES).grid(row=0, column=3, sticky="w")
-        self._label(ttk.Label, adv, "MGU IP").grid(row=0, column=4, sticky="w", padx=(16, 6))
-        ttk.Entry(adv, textvariable=self.mgu_ip, width=16).grid(row=0, column=5, sticky="w")
+        self._label(ttk.Label, adv, "MGU IP").grid(row=0, column=2, sticky="w", padx=(16, 6))
+        ttk.Entry(adv, textvariable=self.mgu_ip, width=16).grid(row=0, column=3, sticky="w")
+
+        # Your car - REQUIRED. No default: flashing the wrong variant bricks the
+        # unit into programming mode (issue #47), so the user must pick it.
+        car = self._label(ttk.Labelframe, body, "YOUR CAR (required before flashing)", style="Card.TLabelframe", padding=8)
+        car.pack(fill="x", pady=(12, 0))
+        self._label(ttk.Label, car, "Variant", font=("Segoe UI", 10, "bold")).pack(side="left")
+        ttk.OptionMenu(car, self.variant_label, self.variant_label.get(),
+                       *[label for _, label in VARIANT_CHOICES],
+                       command=self._on_variant).pack(side="left", padx=8)
+        self._label(ttk.Label, car,
+                  "Pick ID7 or ID8 to match your head unit. If you are not 100% sure, STOP and check - "
+                  "flashing the wrong one can leave the unit stuck in programming mode.",
+                  style="Hint.TLabel", justify="left", wraplength=1000).pack(side="left", padx=8)
 
         # Primary one-click action - this is all most people ever need.
         hero = ttk.Frame(body)
@@ -324,8 +348,26 @@ class App:
             args += ["--gateway", self.gateway.get().strip()]
         if self.mgu_ip.get().strip():
             args += ["--mgu-ip", self.mgu_ip.get().strip()]
-        args += ["--arch", self.arch.get()]
+        if self.arch.get() in ARCHES:
+            args += ["--arch", self.arch.get()]
         return args
+
+    def _on_variant(self, label):
+        """Map the friendly menu label back to the arch code the CLI expects."""
+        self.arch.set(_VARIANT_BY_LABEL.get(label, ""))
+
+    def _require_variant(self):
+        """True if a head-unit variant is selected; otherwise warn and return False.
+        Flashing the wrong variant bricks the unit into programming mode (#47)."""
+        if self.arch.get() in ARCHES:
+            return True
+        messagebox.showerror(
+            "Select your car first",
+            "Choose your head-unit variant (ID7, ID8 BDC3, or ID8 BCP) under "
+            "\"YOUR CAR\" before flashing.\n\n"
+            "There is no default on purpose: flashing the wrong variant partially "
+            "writes the wrong image and can leave the unit stuck in programming mode.")
+        return False
 
     def _run(self, argv, label):
         if self.worker and self.worker.is_alive():
@@ -366,6 +408,8 @@ class App:
         self._run(["enable"] + self._persist_args() + self._common_args(), "enable")
 
     def do_flash(self):
+        if not self._require_variant():
+            return
         if not self.vin.get().strip():
             messagebox.showerror(self.i18n.t("VIN required"),
                                  self.i18n.t("Flashing writes the VIN to the unit, so it is required.\n"
@@ -379,6 +423,8 @@ class App:
         self._run(["flash"] + self._persist_args() + self._common_args(), "flash")
 
     def do_fix_key(self):
+        if not self._require_variant():
+            return
         if not self.vin.get().strip():
             messagebox.showerror("VIN required",
                                  "Fix-key re-flashes the debug image (writing the VIN to the unit),\n"

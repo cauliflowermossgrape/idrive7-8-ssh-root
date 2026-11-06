@@ -8,6 +8,8 @@
     "CONNECTION (optional)": "连接设置（可选）",
     "Gateway": "网关",
     "Variant": "架构",
+    "YOUR CAR (required before flashing)": "您的车型（刷写前必须选择）",
+    "Pick ID7 or ID8 to match your head unit. If you are not 100% sure, STOP and check - flashing the wrong one can leave the unit stuck in programming mode.": "请选择 ID7 或 ID8 以匹配您的主机。如果您不是 100% 确定，请停止并核实——刷错变体可能会使主机卡在编程模式中。",
     "MGU IP": "MGU IP",
     "Flash + Enable": "刷写并启用",
     "Enable": "启用 SSH",
