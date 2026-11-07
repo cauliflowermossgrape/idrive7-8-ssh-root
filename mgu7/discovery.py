@@ -142,11 +142,21 @@ def posix_broadcast_targets():
 def broadcast_targets():
     """[(broadcast, source)] to try; source None lets the OS choose the route."""
     if platform.system() == 'Windows':
-        return [(b, None) for b in windows_broadcast_addresses()]
-    targets = posix_broadcast_targets()
-    if targets:
-        return targets
-    return [(b, None) for b in FALLBACK_BROADCASTS]
+        targets = [(b, None) for b in windows_broadcast_addresses()]
+    else:
+        targets = posix_broadcast_targets()
+    # Always ALSO probe the limited/link-local fallbacks unbound, exactly as the
+    # pre-1.3.0 tool did. The per-adapter enumeration can miss the ENET APIPA
+    # 169.254.x.x broadcast (on Windows the adapter's primary address is often a
+    # DHCP one and the auto-config 169.254 is not exposed as a broadcast), yet
+    # that is where the gateway actually is - dropping these fallbacks regressed
+    # discovery in 1.3.0 (issue #48). Additive and de-duplicated, so the bound
+    # per-interface probes from the macOS/Linux fix are kept.
+    have = {b for b, _ in targets}
+    for fb in FALLBACK_BROADCASTS:
+        if fb not in have:
+            targets.append((fb, None))
+    return targets
 
 def _respond(sock, log, wait_s):
     deadline = _time.monotonic() + wait_s
