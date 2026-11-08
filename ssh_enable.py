@@ -12,7 +12,7 @@ else:
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 from mgu7 import assets as assets_mod
-from mgu7 import diag, discovery, enroll, flash, hsfz, identity as identity_mod, sshcli
+from mgu7 import diag, discovery, enroll, flash, hsfz, identity as identity_mod, preflight, sshcli
 from mgu7.flash import ID7, ID8_BDC3, ID8_BCP
 EXIT_OK = 0
 EXIT_ERROR = 1
@@ -171,6 +171,18 @@ class Tool:
             log('No MGU IP known; pass --mgu-ip to probe port 22.')
         log('Status: debug/SSH-open state is', 'ON' if state.get('dtc_debug') else 'OFF (or not reported)' if state.get('dtcs') is None else 'OFF')
         return state
+
+    def preflight(self):
+        self.connect()
+        out_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'preflight')
+        result = preflight.backup(self.client, self.svk, out_root, vin=self.vin, log=log)
+        log('Coding backup written to %s' % result['folder'])
+        if not result['verified']:
+            log('WARNING: the coding read is incomplete or did not verify - do not rely on it as your only backup.')
+            return EXIT_ERROR
+        log('Done. Copy this folder off the machine before flashing.')
+        log('After flashing, re-code HU_MGU by vehicle order (E-Sys/BimmerCode); see RESTORE.txt in the folder.')
+        return EXIT_OK
 
     def close(self):
         self.connect()
@@ -851,7 +863,7 @@ class Tool:
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description='MGU ID7/ID8 SSH enable, status and close tool (flash-debug-mode + SSH-identity enroll).')
-    parser.add_argument('action', choices=('enable', 'flash', 'fix-key', 'close', 'disable', 'status', 'persist'), help='enable = enroll-only (re-open SSH on an already-flashed unit, no flashing); flash = flash the debug image + enroll; fix-key = re-flash carrying our root key in the unsigned region (repair for units that enroll + open port 22 but refuse login because their stock authorized_keys.root holds a different key - issue #2); persist = make SSH start on every boot then turn debug mode off (clears the B7F8E5 DTC); disable = revert persistence + stop debug/SSH; close = stop debug/SSH; status = read state')
+    parser.add_argument('action', choices=('enable', 'flash', 'fix-key', 'close', 'disable', 'status', 'persist', 'preflight'), help='enable = enroll-only (re-open SSH on an already-flashed unit, no flashing); flash = flash the debug image + enroll; fix-key = re-flash carrying our root key in the unsigned region (repair for units that enroll + open port 22 but refuse login because their stock authorized_keys.root holds a different key - issue #2); persist = make SSH start on every boot then turn debug mode off (clears the B7F8E5 DTC); disable = revert persistence + stop debug/SSH; close = stop debug/SSH; status = read state; preflight = back up the MGU coding read-only over ENET before flashing (no extra adapter)')
     parser.add_argument('--gateway', default='auto', help="ENET gateway/ZGW address, or 'auto' for UDP 6811 broadcast discovery (default: %(default)s)")
     parser.add_argument('--vin', help='17-char VIN (required for enable; written to the MGU with 2E F1 90)')
     parser.add_argument('--arch', default=ID7, choices=(ID7, ID8_BDC3, ID8_BCP), help='head-unit variant (default: %(default)s)')
@@ -886,6 +898,8 @@ def main(argv=None):
             return tool.persist()
         elif args.action == 'disable':
             return tool.disable()
+        elif args.action == 'preflight':
+            return tool.preflight()
         else:
             return tool.enable()
     except KeyboardInterrupt:
