@@ -13,3 +13,5 @@ dist/
 
 # Prebuilt app bundles - distributed via GitHub Releases, not committed
 *.zip
+# Coding backups (contain VIN / coding) - never commit
+data/preflight/
