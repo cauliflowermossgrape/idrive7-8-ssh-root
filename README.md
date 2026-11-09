@@ -93,6 +93,14 @@ Only the flashing commands (`flash`, `fix-key`) carry this risk - `enable`,
 one-time run is all you need, you should never repeat a flash just because
 something looks off - restore the coding instead.
 
+> **Would rather not do any of this yourself?** The whole process - the coding
+> tool, the flash, getting the coding back and setting the apps up - takes some
+> practice. If that's not for you, the [idriveApps](https://idriveapps.com/)
+> service does the lot remotely as a one-stop job: it backs up your coding, roots
+> the unit, restores the backup and installs the apps - so on your end it's just
+> the ENET cable plugged in. It's a paid service and entirely optional; everything
+> in this README can be done by hand with the steps above.
+
 ### BMW Digital Key (issue #13)
 
 **Yes - flashing deletes the car's Digital Key pairings.** Reported on a real
