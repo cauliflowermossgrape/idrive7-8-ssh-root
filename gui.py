@@ -169,6 +169,7 @@ class App:
     # --- layout -----------------------------------------------------------
 
     def _build(self):
+        self._build_menu()
         header = tk.Frame(self.root, bg=HEADER)
         header.pack(fill="x")
         self._label(tk.Label, header, "MGU iDrive  SSH", bg=HEADER, fg=HEADER_FG,
@@ -340,6 +341,16 @@ class App:
         self.detect_btn.configure(state=state)
         self.status.configure(text=self.i18n.t("Working…" if on else "Ready."))
 
+    def _build_menu(self):
+        """A small 'Recovery' menu for the programming-mode helpers - kept out of
+        the main one-click flow since they are only for getting a unit unstuck."""
+        menubar = tk.Menu(self.root)
+        recovery = tk.Menu(menubar, tearoff=0)
+        recovery.add_command(label="Enter programming mode…", command=self.do_enter_prog)
+        recovery.add_command(label="Exit programming mode (recovery)…", command=self.do_exit_prog)
+        menubar.add_cascade(label="Recovery", menu=recovery)
+        self.root.config(menu=menubar)
+
     def _common_args(self):
         args = ["--yes"]
         if self.vin.get().strip():
@@ -448,6 +459,33 @@ class App:
                                    self.i18n.t("Revert SSH to stock and stop debug mode on the head unit?")):
             return
         self._run(["disable"] + self._common_args(), "disable")
+
+    def do_enter_prog(self):
+        if not self._require_variant():
+            return
+        if not messagebox.askyesno(
+            "Enter programming mode?",
+            "Runs the proven pre-flash sequence (extended session, communication "
+            "control, programming-precondition routines, an ECU reset, then the "
+            "programming session) and stops the moment the unit is in programming "
+            "mode.\n\n"
+            "It writes NOTHING to flash and sends no VIN. The head unit shows the "
+            "blue programming screen; use \"Exit programming mode\" to return it to "
+            "normal (the session also lapses on its own after a few idle seconds).\n\n"
+            "Continue?"):
+            return
+        self._run(["enter-prog"] + self._common_args(), "enter-prog")
+
+    def do_exit_prog(self):
+        if not messagebox.askyesno(
+            "Exit programming mode?",
+            "Leaves programming mode (default session) and reboots the head unit "
+            "back to normal operation (ECU reset).\n\n"
+            "Use this if a unit is stuck on the blue programming screen after a "
+            "failed flash. It reboots the unit; give it ~30 s to come back.\n\n"
+            "Continue?"):
+            return
+        self._run(["exit-prog"] + self._common_args(), "exit-prog")
 
     def detect_vin(self):
         if self.worker and self.worker.is_alive():

@@ -5,6 +5,13 @@ REQUEST_IP = bytes.fromhex('22 17 2A')
 REQUEST_DTC = bytes.fromhex('19 02 0C')
 ROUTINE_DEBUG_STOP = bytes.fromhex('31 02 A0 FD')
 ROUTINE_DEBUG_RESULTS = bytes.fromhex('31 03 A0 FD')
+# The exact tail the proven flash runs to leave programming mode and return the
+# unit to the application: deactivate programming mode, run the finish routine,
+# then hard-reset. The matching "programming ON" routine (31 01 0F 0C 03) is sent
+# before SecurityAccess in the flash, so this family needs no security unlock.
+PROG_MODE_OFF = bytes.fromhex('31 01 0F 0C 00')
+PROG_FINISH = bytes.fromhex('31 01 10 0F')
+ECU_RESET = bytes.fromhex('11 01')
 SVK_TYPES = {1: 'HWEL', 5: 'CAFD', 6: 'BTLD', 8: 'SWFL', 13: 'SWFK'}
 BTLD_MGU = '00003F36'
 BTC_NBT = ('00001275', '00001FFD')
@@ -161,3 +168,44 @@ def close_ssh(client, dst=MGU):
         if x.data[1:4] != ROUTINE_DEBUG_STOP[1:4]:
             raise UdsReject('The routine stop echoed a different identifier.', 49, 0)
     return 'confirmed'
+
+def _routine_status(client, dst, req):
+    """Send one request best-effort and describe the reply. Never raises."""
+    try:
+        x = match_response(client.request(dst, req, P_ADVANCED), dst)
+        if x is None:
+            return 'no response'
+        if x.negative:
+            return '7F %02X %02X' % (x.sid, x.nrc)
+        return 'ok'
+    except (HsfzError, UdsReject):
+        return 'link dropped'
+
+def exit_programming(client, dst=MGU):
+    """Leave programming mode the way a completed flash does, so the unit reboots
+    into the application instead of back to the blue programming screen.
+
+    Replicates the proven flash tail: deactivate programming mode
+    (31 01 0F 0C 00), run the finish-programming routine (31 01 10 0F), then
+    hard-reset (11 01). A plain ECU reset alone is NOT enough - the unit comes
+    back up still in programming mode because the programming-active state was
+    never cleared; those two routines are what clear it. This routine family is
+    sent before SecurityAccess in the flash, so no security unlock is needed.
+
+    Every step is best-effort (a stuck unit may answer a NRC, and the reset drops
+    the link as it reboots). Returns a {'prog_mode_off', 'finish', 'reset'} dict.
+    """
+    status = {'prog_mode_off': None, 'finish': None, 'reset': None}
+    status['prog_mode_off'] = _routine_status(client, dst, PROG_MODE_OFF)
+    status['finish'] = _routine_status(client, dst, PROG_FINISH)
+    try:
+        x = match_response(client.request(dst, ECU_RESET, P_ADVANCED), dst)
+        if x is None:
+            status['reset'] = 'sent (no reply - the unit is rebooting)'
+        elif x.negative:
+            status['reset'] = '7F %02X %02X' % (x.sid, x.nrc)
+        else:
+            status['reset'] = 'ok (51 01)'
+    except (HsfzError, UdsReject):
+        status['reset'] = 'sent (link dropped on reset, expected)'
+    return status

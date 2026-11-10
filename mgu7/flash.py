@@ -581,13 +581,24 @@ class FlashEngine:
             desc = 'the protected response matched this compatibility rule'
         return 'Expected compatibility response: %s. The protected sequence advances without resending this frame.' % desc
 
-    def run(self, data, progress=None):
+    def run(self, data, progress=None, stop_after=None):
+        """Execute the pinned flash sequence.
+
+        stop_after (0-based frame index) runs only frames[0..stop_after] and then
+        stops - used to replay just the proven programming-session preamble
+        (enter-prog) without SecurityAccess, RequestDownload, TransferData or the
+        VIN write, which all come later. Operands are only required when a
+        SecurityAccess seed frame falls within the executed range.
+        """
         progress = progress or (lambda *a, **k: None)
         frames = data.frames
         count = len(frames)
+        if stop_after is not None:
+            count = max(0, min(count, stop_after + 1))
         n = count
         operands = self.operands
-        if operands is None:
+        needs_operands = any(f.sid == 39 and _is_seed_level(f.sub) for f in frames[:count])
+        if needs_operands and operands is None:
             raise FlashError('Flash is locked because no supported M7F1 security operands were provided.')
         if self.gate is not None and (not self.gate()):
             raise FlashError('Flash is locked because the current connection has no freshly decoded supported BTLD 00003F36 SVK.')
@@ -601,7 +612,7 @@ class FlashEngine:
         legacy_advances = 0
         consecutive_36_24 = 0
         last_positive = False
-        expected_keys = sum((1 for f in frames if f.sid == 39 and _is_seed_level(f.sub)))
+        expected_keys = sum((1 for f in frames[:count] if f.sid == 39 and _is_seed_level(f.sub)))
         for i in range(count):
             p = frames[i]
             t = p.h
