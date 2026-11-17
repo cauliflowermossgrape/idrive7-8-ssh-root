@@ -106,6 +106,13 @@ class PFrame:
         return self.sid == 17 and self.sub == 1
 
     @property
+    def is_programming_session(self):
+        # DiagnosticSessionControl -> programmingSession (10 02): the frame that
+        # gates SecurityAccess and everything after it. If the HU never enters it,
+        # the rest of the flash cannot succeed.
+        return self.sid == 16 and self.sub == 2
+
+    @property
     def kind(self):
         labels = {16: 'Diagnostic session', 17: 'ECU reset', 34: 'Read identifier', 39: 'Security access', 40: 'Communication control', 46: 'Write identifier', 49: 'Routine control', 52: 'Request download', 55: 'Finish transfer', 62: 'Tester present', 133: 'DTC setting'}
         if self.is_transfer:
@@ -675,6 +682,17 @@ class FlashEngine:
                     time.sleep(self.reachable_poll_ms / 1000.0)
                     v2 = send_frame_once()
                 if _is_session_not_ready(p, v2):
+                    if p.is_programming_session:
+                        detail = 'no response' if v2.timeout else '7F %02X %02X' % (p.sid, v2.payload.nrc)
+                        raise FlashError(
+                            'Flash frame %d/%d: the head unit refused to enter programming mode '
+                            '(%s) and did not recover within %.0f s. This is a vehicle-side '
+                            'programming precondition, not a tool fault - most often low battery '
+                            'voltage (connect a charger or run the engine) or a precondition that '
+                            'also blocks E-Sys/ISTA at the same step. The flash was stopped here, '
+                            'before SecurityAccess, instead of continuing to a guaranteed 7F 27 7F '
+                            'failure.'
+                            % (human, count, detail, self.reachable_wait_ms / 1000.0))
                     progress(human, count, percent, part, p.kind,
                              'The HU did not re-enter the diagnostic session within %.0f s; it may need a longer wait or a power cycle.'
                              % (self.reachable_wait_ms / 1000.0))
