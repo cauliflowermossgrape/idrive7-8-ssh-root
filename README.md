@@ -101,6 +101,30 @@ something looks off - restore the coding instead.
 > the ENET cable plugged in. It's a paid service and entirely optional; everything
 > in this README can be done by hand with the steps above.
 
+### Bowers & Wilkins / surround sound and audio faults (issue #73)
+
+**On cars with a Bowers & Wilkins or surround-sound setup, the sound can change
+after a flash** - the root itself does not touch audio, but `flash` wipes the
+head unit's coding, and your audio configuration lives in that coding. After a
+flash and a partial or mixed coding restore, the surround sound can end up
+flatter / less spacious and the head unit can log audio faults. This is what the
+"B&W sounds worse after SSH" reports are usually describing. **It is fixed by
+coding and calibration - not by restoring or overwriting files** (re-flashing or
+overwriting `SWFL 56AE` does not fix it).
+
+If you see either of these after rooting, here is the fix (reported on a G20
+M340i, factory Harman Kardon, MGU `030.016.002`):
+
+| Fault | Cause | Fix |
+|---|---|---|
+| `B7F87B` HU-H: audio configuration inconsistent | The head unit's coding doesn't match the amplifier (e.g. B&W coded on an HK car, or a partial restore after a flash) | Coding (BimmerCode): set `HU_MGU` `AUDIO_SYSTEM` to match the RAM amplifier, or restore a full HU backup; then clear the faults |
+| `B7F500` RAM: microphone driver not calibrated | The microphone calibration was lost (the fault returns after you clear it) | **ISTA**: run the RAM microphone calibration service function (dealer-level diagnostics; BimmerCode cannot do this) |
+
+Neither fix touches the root or the SSH files - root access keeps working
+afterwards. `B7F500` in particular tends to come back after being cleared until
+the ISTA calibration is done, and while it is active the surround sound is
+noticeably fuller once calibrated.
+
 ### BMW Digital Key (issue #13)
 
 **Yes - flashing deletes the car's Digital Key pairings.** Reported on a real
